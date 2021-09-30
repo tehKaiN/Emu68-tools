@@ -5,41 +5,77 @@
 #include <exec/errors.h>
 #include <dos/dosextens.h>
 #include <libraries/configregs.h>
+#include <libraries/configvars.h>
 
 #include <proto/exec.h>
 
 #include <stdint.h>
 
-asm(
-"       .text               \n"
-"       .globl _device_start\n"
-"_device_start:             \n"
-"       moveq #-1, d0       \n"
-"       rts                 \n"
-"       .globl _DT_DiagArea \n"
-"_DT_DiagArea:              \n"
-"       .byte 0x90          \n"
-"       .byte 0x00          \n"
-"       .word _foo - _DT_DiagArea   \n"
-"       .word _DT_DiagPoint - _DT_DiagArea  \n"
-"       .word _DT_BootPoint - _DT_DiagArea  \n"
-"       .word _deviceName - _DT_DiagArea    \n"
-"       .word 0x0000        \n"
-"       .word 0x0000        \n"
-);
+#define VERSION             0
+#define REVISION            1
+
+#define MANUFACTURER_ID     0x6d73
+#define PRODUCT_ID          0x21
+#define SERIAL_NUMBER       0x04f6403d 
+
+extern UBYTE diag_start;
+extern UBYTE rom_end;
+extern UBYTE rom_start;
+extern UBYTE ramcopy_end;
+extern const char deviceName[];
+extern const char deviceIdString[];
+void Init();
 
 const struct Resident RomTag __attribute__((used)) = {
     RTC_MATCHWORD,
-    (struct Resident *)&RomTag,
+    (struct Resident *)((intptr_t)&RomTag - 32),
+    (APTR)((intptr_t)&ramcopy_end - 32),
+    RTW_COLDSTART,
+    VERSION,
+    NT_RESOURCE,
+    120,
+    (char *)((intptr_t)&deviceName - 32),
+    (char *)((intptr_t)&deviceIdString - 32),
+    Init,
 };
 
-static const char deviceName[] = "devicetree.resource";
-static const char deviceIdString[] = VERSION_STRING;
+const char deviceName[] = "devicetree.resource";
+const char deviceIdString[] = VERSION_STRING;
 
-void DT_DiagPoint() {    
+const APTR patchListRAM[] = {
+    (APTR)((intptr_t)&RomTag.rt_Name - 32),
+    (APTR)((intptr_t)&RomTag.rt_IdString - 32),
+    (APTR)((intptr_t)&RomTag.rt_MatchTag - 32),
+    (APTR)((intptr_t)&RomTag.rt_EndSkip - 32),
+    (APTR)-1
+};
+
+const APTR patchListROM[] = {
+    (APTR)((intptr_t)&RomTag.rt_Init - 32),
+    (APTR)-1
+};
+
+int DiagPoint(APTR boardBase asm("a0"), struct DiagArea *diagCopy asm("a2"), struct ConfigDev *configDev asm("a3"))
+{
+    const APTR *patch = &patchListRAM[0];
+
+    while(*patch != (APTR)-1)
+    {
+        *(ULONG*)*patch += (intptr_t)diagCopy;
+        patch++;
+    }
+
+    patch = &patchListROM[0];
+    while(*patch != (APTR)-1)
+    {
+        *(ULONG*)*patch += (intptr_t)boardBase;
+        patch++;
+    }
+
+    return 1;
 }
 
-void DT_BootPoint() {
+void BootPoint()
+{
 
 }
-void foo() {}
