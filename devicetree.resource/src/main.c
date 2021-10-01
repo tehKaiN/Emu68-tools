@@ -4,6 +4,7 @@
 #include <exec/devices.h>
 #include <exec/errors.h>
 #include <exec/libraries.h>
+#include <exec/execbase.h>
 #include <dos/dosextens.h>
 #include <libraries/configregs.h>
 #include <libraries/configvars.h>
@@ -56,7 +57,7 @@ const APTR patchListROM[] = {
     (APTR)-1
 };
 
-int DiagPoint(APTR boardBase asm("a0"), struct DiagArea *diagCopy asm("a2"), struct ConfigDev *configDev asm("a3"))
+int DiagPoint(APTR boardBase asm("a0"), struct DiagArea *diagCopy asm("a2"), struct ConfigDev *configDev asm("a3"), struct ExecBase *SysBase asm("a6"))
 {
     const APTR *patch = &patchListRAM[0];
     ULONG offset = (ULONG)&diag_offset;
@@ -64,7 +65,8 @@ int DiagPoint(APTR boardBase asm("a0"), struct DiagArea *diagCopy asm("a2"), str
     /* Patch parts which reside in RAM only */
     while(*patch != (APTR)-1)
     {
-        *(ULONG*)*patch += (intptr_t)diagCopy - offset;
+        ULONG * address = (ULONG *)((intptr_t)*patch - offset);
+        *address += (intptr_t)diagCopy - offset;
         patch++;
     }
 
