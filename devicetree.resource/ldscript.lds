@@ -1,6 +1,6 @@
 MEMORY
 {
-    rom (rx) : org = 0x00000000, l = 8M
+    rom (rx) : org = 0x00000000, l = 64K
     ram (rw) : org = 0xdeaddead, l = 0M
 }
 
@@ -8,28 +8,57 @@ ENTRY(_rom_start)
 
 SECTIONS
 {
+    /* Board parameters which will be subsequently used to generate proper expansion rom structures */
+    _type   = 0x91;
+    _pID    = 0x21;
+    _flags  = 0x50;
+    _mID    = 0x6d73;
+    _serial = 0x04f6403d;
+    _off    = _diag_start - _rom_start;
+    _int    = 0x00;
+
     .text 0x1000 : 
     {
         _rom_start = .;
 
-        /* ROM image will start with compressed ExpansionRom structure */
-        BYTE(0x91)                          /* ZORROIII Board with 64K ROM */
-        BYTE(~0x21)                         /* ProductID */
-        BYTE(~0x50)                         /* ZORROIII Board, cannot be shut up */
-        BYTE(~0x00)                         /* Reserved, must be 0 */
-        SHORT(~0x6d73)                      /* ManufacturerID */
-        LONG(~0x04f6403d)                   /* Serial number */
-        SHORT(~(_diag_start - _rom_start))  /* Offset to DiagArea */
-        LONG(~0x00000000)                   /* Reserved, must be 0 */
+        /* ROM image will start with ExpansionRom structure */
+
+        LONG(((_type << 24) | (_type << 12)) & 0xf000f000)      /* er_Type */
+        LONG(~((_pID << 24) | (_pID << 12)) & 0xf000f000)       /* er_Product */
+        LONG(~((_flags << 24) | (_flags << 12)) & 0xf000f000)   /* er_Flags */
+        LONG(0xf000f000)                                        /* er_Reserved03 */
+
+        _mIDh = (_mID >> 8) & 0xff; _mIDl = (_mID) & 0xff;
+        LONG(~((_mIDh << 24) | (_mIDh << 12)) & 0xf000f000)     /* er_Manufacturer */
+        LONG(~((_mIDl << 24) | (_mIDl << 12)) & 0xf000f000)
+
+        _ser0 = (_serial >> 24) & 0xff; _ser1 = (_serial >> 16) & 0xff;
+        _ser2 = (_serial >> 8) & 0xff; _ser3 = (_serial) & 0xff;
+        LONG(~((_ser0 << 24) | (_ser0 << 12)) & 0xf000f000)     /* er_SerialNumber */
+        LONG(~((_ser1 << 24) | (_ser1 << 12)) & 0xf000f000)
+        LONG(~((_ser2 << 24) | (_ser2 << 12)) & 0xf000f000)
+        LONG(~((_ser3 << 24) | (_ser3 << 12)) & 0xf000f000)
+
+        _offh = (_off >> 8) & 0xff; _offl = (_off) & 0xff;
+        LONG(~((_offh << 24) | (_offh << 12)) & 0xf000f000)     /* er_InitDiagVec */
+        LONG(~((_offl << 24) | (_offl << 12)) & 0xf000f000)
+
+        LONG(0xf000f000) LONG(0xf000f000)                       /* er_Reserved0c, er_Reserved0d */
+        LONG(0xf000f000) LONG(0xf000f000)                       /* er_Reserved0e, er_Reserved0f */
 
         /* ExpansionControl follows ExpansionRom structure immediately */
-        BYTE(0x00)                          /* ec_Interrupt */
-        BYTE(~0x00)                         /* BaseAddress 31..24 (ZIII) */
-        BYTE(~0x00)                         /* BaseAddress 23..16 (ZII and ZIII) */
-        BYTE(~0x00)                         /* ShutUp write address */
-        LONG(~0x00000000)                   /* Reserved 14..17 */
-        LONG(~0x00000000)                   /* Reserved 18..1b */
-        LONG(~0x00000000)                   /* Reserved 1c..1f */
+
+        LONG(((_int << 24) | (_int << 12)) & 0xf000f000)        /* ec_Interrupt */
+        LONG(0xf000f000)                                        /* ec_Z3_HighBase */
+        LONG(0xf000f000)                                        /* ec_BaseAddress */
+        LONG(0xf000f000)                                        /* ec_Shutup */
+        
+        LONG(0xf000f000) LONG(0xf000f000)                       /* ec_Reserved14, ec_Reserved15 */
+        LONG(0xf000f000) LONG(0xf000f000)                       /* ec_Reserved16, ec_Reserved17 */
+        LONG(0xf000f000) LONG(0xf000f000)                       /* ec_Reserved18, ec_Reserved19 */
+        LONG(0xf000f000) LONG(0xf000f000)                       /* ec_Reserved1a, ec_Reserved1b */
+        LONG(0xf000f000) LONG(0xf000f000)                       /* ec_Reserved1c, ec_Reserved1d */
+        LONG(0xf000f000) LONG(0xf000f000)                       /* ec_Reserved1e, ec_Reserved1f */
 
         _diag_start = .;
 
@@ -48,9 +77,16 @@ SECTIONS
 
         _ramcopy_end = .;
 
+        /* This constant gives offset of DiagArea from beginning of the ROM */
+        _diag_offset = _diag_start - _rom_start;
+
         *(.text .text.* .rodata .rodata.*)
         *(.eh_frame)
-    } >rom
+
+        . = ALIGN(4096) - 4;
+
+        LONG(0xdeadbeef)
+    } >rom = 0xff
 
     _rom_end = .;
 
