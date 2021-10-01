@@ -8,7 +8,6 @@
 #include <libraries/configvars.h>
 
 #include <proto/exec.h>
-
 #include <stdint.h>
 
 #define VERSION             0
@@ -22,20 +21,21 @@ extern UBYTE diag_start;
 extern UBYTE rom_end;
 extern UBYTE rom_start;
 extern UBYTE ramcopy_end;
+extern ULONG diag_offset;
 extern const char deviceName[];
 extern const char deviceIdString[];
 void Init();
 
 const struct Resident RomTag __attribute__((used)) = {
     RTC_MATCHWORD,
-    (struct Resident *)((intptr_t)&RomTag - 32),
-    (APTR)((intptr_t)&ramcopy_end - 32),
+    (struct Resident *)&RomTag,
+    (APTR)&ramcopy_end,
     RTW_COLDSTART,
     VERSION,
     NT_RESOURCE,
     120,
-    (char *)((intptr_t)&deviceName - 32),
-    (char *)((intptr_t)&deviceIdString - 32),
+    (char *)((intptr_t)&deviceName),
+    (char *)((intptr_t)&deviceIdString),
     Init,
 };
 
@@ -43,28 +43,31 @@ const char deviceName[] = "devicetree.resource";
 const char deviceIdString[] = VERSION_STRING;
 
 const APTR patchListRAM[] = {
-    (APTR)((intptr_t)&RomTag.rt_Name - 32),
-    (APTR)((intptr_t)&RomTag.rt_IdString - 32),
     (APTR)((intptr_t)&RomTag.rt_MatchTag - 32),
     (APTR)((intptr_t)&RomTag.rt_EndSkip - 32),
     (APTR)-1
 };
 
 const APTR patchListROM[] = {
-    (APTR)((intptr_t)&RomTag.rt_Init - 32),
+    (APTR)&RomTag.rt_Init,
+    (APTR)&RomTag.rt_Name,
+    (APTR)&RomTag.rt_IdString,
     (APTR)-1
 };
 
 int DiagPoint(APTR boardBase asm("a0"), struct DiagArea *diagCopy asm("a2"), struct ConfigDev *configDev asm("a3"))
 {
     const APTR *patch = &patchListRAM[0];
+    ULONG offset = (ULONG)&diag_offset;
 
+    /* Patch parts which reside in RAM only */
     while(*patch != (APTR)-1)
     {
-        *(ULONG*)*patch += (intptr_t)diagCopy;
+        *(ULONG*)*patch += (intptr_t)diagCopy - offset;
         patch++;
     }
 
+    /* Patch parts which are in the ROM image */
     patch = &patchListROM[0];
     while(*patch != (APTR)-1)
     {
