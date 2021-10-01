@@ -4,10 +4,20 @@ get_verstring(VERSTRING)
 
 add_link_options(-ffreestanding -nostdlib -nostartfiles -Wl,-e_rom_start -Wl,-T${CMAKE_CURRENT_SOURCE_DIR}/ldscript.lds)
 add_compile_options(-Os -m68020 -fomit-frame-pointer)
+add_compile_definitions(PRIVATE VERSION_STRING="${VERSTRING}")
+include_directories(include)
 
 add_executable(devicetree.resource
-    main.c
-    init.c
+    src/main.c
+    src/init.c
+    src/closekey.c
+    src/openkey.c
+    src/findproperty.c
+    src/getpropname.c
+    src/getpropvalue.c
+    src/getproplen.c
+    src/getchild.c
+    src/getproperty.c
 )
 
 add_custom_command(
@@ -16,4 +26,3 @@ add_custom_command(
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 set_target_properties(devicetree.resource PROPERTIES LINK_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/ldscript.lds)
-add_compile_definitions(devicetree.resource PRIVATE VERSION_STRING="${VERSTRING}")

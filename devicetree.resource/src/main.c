@@ -3,6 +3,7 @@
 #include <exec/io.h>
 #include <exec/devices.h>
 #include <exec/errors.h>
+#include <exec/libraries.h>
 #include <dos/dosextens.h>
 #include <libraries/configregs.h>
 #include <libraries/configvars.h>
