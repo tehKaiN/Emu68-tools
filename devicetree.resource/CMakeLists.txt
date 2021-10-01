@@ -15,5 +15,5 @@ add_custom_command(
     COMMAND ${CMAKE_OBJCOPY} -v -O binary "${CMAKE_CURRENT_BINARY_DIR}/devicetree.resource" "${CMAKE_CURRENT_BINARY_DIR}/devicetree.bin"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
-
+set_target_properties(devicetree.resource PROPERTIES LINK_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/ldscript.lds)
 add_compile_definitions(devicetree.resource PRIVATE VERSION_STRING="${VERSTRING}")
