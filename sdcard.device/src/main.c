@@ -16,10 +16,6 @@
 #define VERSION             0
 #define REVISION            1
 
-#define MANUFACTURER_ID     0x6d73
-#define PRODUCT_ID          0x21
-#define SERIAL_NUMBER       0x04f6403d 
-
 extern UBYTE diag_start;
 extern UBYTE rom_end;
 extern UBYTE rom_start;
@@ -66,7 +62,7 @@ int DiagPoint(APTR boardBase asm("a0"), struct DiagArea *diagCopy asm("a2"), str
     /* Patch parts which reside in RAM only */
     while(*patch != (APTR)-1)
     {
-        ULONG * address = (ULONG *)((intptr_t)*patch - offset + diagCopy);
+        ULONG * address = (ULONG *)((intptr_t)*patch - offset + (ULONG)diagCopy);
         *address += (intptr_t)diagCopy - offset;
         patch++;
     }
@@ -75,7 +71,7 @@ int DiagPoint(APTR boardBase asm("a0"), struct DiagArea *diagCopy asm("a2"), str
     patch = &patchListROM[0];
     while(*patch != (APTR)-1)
     {
-        ULONG * address = (ULONG *)((intptr_t)*patch - offset + diagCopy);
+        ULONG * address = (ULONG *)((intptr_t)*patch - offset + (ULONG)diagCopy);
         *address += (intptr_t)boardBase;
         patch++;
     }
