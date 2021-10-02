@@ -66,7 +66,7 @@ int DiagPoint(APTR boardBase asm("a0"), struct DiagArea *diagCopy asm("a2"), str
     /* Patch parts which reside in RAM only */
     while(*patch != (APTR)-1)
     {
-        ULONG * address = (ULONG *)((intptr_t)*patch - offset + diagCopy);
+        ULONG * address = (ULONG *)((intptr_t)*patch - offset + (ULONG)diagCopy);
         *address += (intptr_t)diagCopy - offset;
         patch++;
     }
@@ -75,7 +75,7 @@ int DiagPoint(APTR boardBase asm("a0"), struct DiagArea *diagCopy asm("a2"), str
     patch = &patchListROM[0];
     while(*patch != (APTR)-1)
     {
-        ULONG * address = (ULONG *)((intptr_t)*patch - offset + diagCopy);
+        ULONG * address = (ULONG *)((intptr_t)*patch - offset + (ULONG)diagCopy);
         *address += (intptr_t)boardBase;
         patch++;
     }
