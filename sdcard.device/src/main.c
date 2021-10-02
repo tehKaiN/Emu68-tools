@@ -9,12 +9,12 @@
 #include <libraries/configregs.h>
 #include <libraries/configvars.h>
 
+#include <proto/devicetree.h>
 #include <proto/exec.h>
 #include <stdint.h>
 
-#include "devicetree.h"
-
-
+#define VERSION             0
+#define REVISION            1
 
 #define MANUFACTURER_ID     0x6d73
 #define PRODUCT_ID          0x21
@@ -34,15 +34,15 @@ const struct Resident RomTag __attribute__((used)) = {
     (struct Resident *)&RomTag,
     (APTR)&ramcopy_end,
     RTF_COLDSTART,
-    DT_VERSION,
-    NT_RESOURCE,
-    DT_PRIORITY,
+    VERSION,
+    NT_DEVICE,
+    20,
     (char *)((intptr_t)&deviceName),
     (char *)((intptr_t)&deviceIdString),
     Init,
 };
 
-const char deviceName[] = "devicetree.resource";
+const char deviceName[] = "sdcard.device";
 const char deviceIdString[] = VERSION_STRING;
 
 const APTR patchListRAM[] = {
