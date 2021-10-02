@@ -28,6 +28,8 @@ struct DeviceTreeBase {
     struct ExecBase *   dt_ExecBase;
     of_node_t *         dt_Root;
     CONST_STRPTR        dt_StrNull;
+    uint32_t *          dt_Data;
+    CONST_STRPTR        dt_Strings;
 };
 
 extern const char deviceName[];
@@ -36,8 +38,9 @@ extern const char deviceIdString[];
 #define BASE_NEG_SIZE (8 * 6)
 #define BASE_POS_SIZE ((sizeof(struct DeviceTreeBase)))
 #define DT_PRIORITY     120
-#define DT_VERSION      0
-#define DT_REVISION     1
+#define DT_VERSION      1
+#define DT_REVISION     0
+
 
 static inline int dt_strcmp(const char *s1, const char *s2)
 {   
@@ -59,6 +62,16 @@ static inline int _strcmp(const char *s1, const char *s2)
     return (*(const unsigned char *)s1 - *(const unsigned char *)(s2 - 1));
 }
 
+static inline int _strlen(const char *buf)
+{
+    int len = 0;
+
+    if (buf)
+        while(*buf++)
+            len++;
+
+    return len;
+}
 
 struct fdt_header {
     uint32_t magic;
