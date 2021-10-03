@@ -9,6 +9,8 @@ add_compile_definitions(PRIVATE VERSION_STRING="${VERSTRING}")
 add_executable(sdcard.device
     src/main.c
     src/init.c
+    src/beginio.c
+    src/abortio.c
 )
 
 add_custom_command(
