@@ -1,8 +1,14 @@
 #include <exec/types.h>
 #include <exec/execbase.h>
-#include <proto/exec.h>
 #include <exec/io.h>
 #include <exec/errors.h>
+
+#include <proto/exec.h>
+#include <proto/expansion.h>
+#include <proto/devicetree.h>
+
+#include <libraries/configregs.h>
+#include <libraries/configvars.h>
 
 #include "sdcard.h"
 
@@ -78,7 +84,54 @@ ULONG SD_Close(struct IORequest * io asm("a1"), struct SDCardBase * SDCardBase a
     return 0;
 }
 
+extern const char deviceName[];
+extern const char deviceIdString[];
+
 APTR Init(struct ExecBase *SysBase asm("a6"))
 {
-    return NULL;
+    struct DeviceTreeBase *DeviceTreeBase = NULL;
+    struct ExpansionBase *ExpansionBase = NULL;
+    struct SDCardBase *SDCardBase = NULL;
+    struct CurrentBinding binding;
+
+    DeviceTreeBase = OpenResource("devicetree.resource");
+
+    if (DeviceTreeBase != NULL)
+    {
+        APTR base_pointer = NULL;
+    
+        ExpansionBase = (struct ExpansionBase *)OpenLibrary("expansion.library", 0);
+        GetCurrentBinding(&binding, sizeof(binding));
+
+        base_pointer = AllocMem(BASE_NEG_SIZE + BASE_POS_SIZE, MEMF_PUBLIC | MEMF_CLEAR);
+
+        if (base_pointer != NULL)
+        {
+            SDCardBase = (struct SDCardBase *)((UBYTE *)base_pointer + BASE_NEG_SIZE);
+            MakeFunctions(SDCardBase, relFuncTable, (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+
+            SDCardBase->sd_Device.dd_Library.lib_Node.ln_Type = NT_DEVICE;
+            SDCardBase->sd_Device.dd_Library.lib_Node.ln_Pri = SDCARD_PRIORITY;
+            SDCardBase->sd_Device.dd_Library.lib_Node.ln_Name = (STRPTR)((ULONG)deviceName + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+
+            SDCardBase->sd_Device.dd_Library.lib_NegSize = BASE_NEG_SIZE;
+            SDCardBase->sd_Device.dd_Library.lib_PosSize = BASE_POS_SIZE;
+            SDCardBase->sd_Device.dd_Library.lib_Version = SDCARD_VERSION;
+            SDCardBase->sd_Device.dd_Library.lib_Revision = SDCARD_REVISION;
+            SDCardBase->sd_Device.dd_Library.lib_IdString = (STRPTR)((ULONG)deviceIdString + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);    
+
+            SDCardBase->sd_SysBase = SysBase;
+            SDCardBase->sd_DeviceTreeBase = DeviceTreeBase;
+
+            SumLibrary((struct Library*)SDCardBase);
+            AddDevice((struct Device *)SDCardBase);
+
+            binding.cb_ConfigDev->cd_Flags &= ~CDF_CONFIGME;
+            binding.cb_ConfigDev->cd_Driver = SDCardBase;
+        }
+
+        CloseLibrary((struct Library*)ExpansionBase);
+    }
+
+    return SDCardBase;
 }

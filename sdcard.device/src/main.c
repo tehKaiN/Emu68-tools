@@ -13,8 +13,8 @@
 #include <proto/exec.h>
 #include <stdint.h>
 
-#define VERSION             0
-#define REVISION            1
+#include "sdcard.h"
+
 
 extern UBYTE diag_start;
 extern UBYTE rom_end;
@@ -30,9 +30,9 @@ const struct Resident RomTag __attribute__((used)) = {
     (struct Resident *)&RomTag,
     (APTR)&ramcopy_end,
     RTF_COLDSTART,
-    VERSION,
+    SDCARD_VERSION,
     NT_DEVICE,
-    20,
+    SDCARD_PRIORITY,
     (char *)((intptr_t)&deviceName),
     (char *)((intptr_t)&deviceIdString),
     Init,
