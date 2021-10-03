@@ -38,7 +38,7 @@ const struct Resident RomTag __attribute__((used)) = {
     Init,
 };
 
-const char deviceName[] = "sdcard.device";
+const char deviceName[] = "brcm-sdhc.device";
 const char deviceIdString[] = VERSION_STRING;
 
 const APTR patchListRAM[] = {
