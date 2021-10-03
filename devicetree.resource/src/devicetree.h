@@ -39,7 +39,7 @@ extern const char deviceIdString[];
 #define BASE_POS_SIZE ((sizeof(struct DeviceTreeBase)))
 #define DT_PRIORITY     120
 #define DT_VERSION      1
-#define DT_REVISION     0
+#define DT_REVISION     1
 
 
 static inline int dt_strcmp(const char *s1, const char *s2)
