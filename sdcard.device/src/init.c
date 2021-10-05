@@ -211,6 +211,42 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                 DT_CloseKey(aliases);
             }
 
+            mbox = DT_OpenKey("/soc");
+            if (mbox)
+            {
+                APTR key = mbox;
+                int size_cells = 0;
+                int address_cells = 0;
+
+                do {
+                    const ULONG *siz = DT_GetPropValue(DT_FindProperty(key, "#size-cells"));
+                    const ULONG *addr = DT_GetPropValue(DT_FindProperty(key, "#address-cells"));
+
+                    if (siz != NULL)
+                        size_cells = *siz;
+
+                    if (addr != NULL)
+                        address_cells = *addr;
+
+                    key = DT_GetParent(key);
+                } while (key && (size_cells == 0 || address_cells == 0));
+
+                if (size_cells == 0)
+                    size_cells = 1;
+                if (address_cells == 0)
+                    address_cells = 1;
+
+                const ULONG *reg = DT_GetPropValue(DT_FindProperty(mbox, "ranges"));
+
+                ULONG phys_vc4 = reg[address_cells - 1];
+                ULONG phys_cpu = reg[2 * address_cells - 1];
+
+                SDCardBase->sd_MailBox = (APTR)((ULONG)SDCardBase->sd_MailBox - phys_vc4 + phys_cpu);
+                SDCardBase->sd_SDHC = (APTR)((ULONG)SDCardBase->sd_SDHC - phys_vc4 + phys_cpu);
+
+                DT_CloseKey(mbox);
+            }
+
             asm volatile("move.l %0, d0; move.l %1, d1; illegal"::"r"(SDCardBase->sd_SDHC),"r"(SDCardBase->sd_MailBox):"d0","d1","memory");
         }
 
