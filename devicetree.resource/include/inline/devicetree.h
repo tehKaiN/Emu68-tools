@@ -52,4 +52,8 @@ typedef ULONG _sfdc_vararg;
       LP1(0x30, CONST_APTR, DT_GetPropVaue , APTR, ___property, a0,\
       , DEVICETREE_BASE_NAME)
 
+#define DT_GetParent(___key) \
+      LP1(0x36, APTR, DT_GetParent , APTR, ___key, a0, \
+      , DEVICETREE_BASE_NAME)
+
 #endif /* !_INLINE_DEVICETREE_H */

@@ -33,6 +33,7 @@ asm(
 "       .short _DT_GetPropLen   \n"
 "       .short _DT_GetPropName  \n"
 "       .short _DT_GetPropValue \n"
+"       .short _DT_GetParent    \n"
 "       .short -1               \n"
 );
 

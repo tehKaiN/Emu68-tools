@@ -25,13 +25,17 @@ APTR DT_OpenKey(CONST_STRPTR key asm("a0"), struct DeviceTreeBase *DTBase asm("a
         
         while(*key)
         {   
-            key++;
+            int found = 0;
+
+            if (*key == '/' )
+                key++;
+
             for (i=0; i < 63; i++)
             {   
-                if (*key == '/' || *key == 0)
+                ptrbuf[i] = key[i];
+
+                if (key[i] == '/' || key[i] == 0)
                     break;
-                ptrbuf[i] = *key;
-                key++;
             }
             
             ptrbuf[i] = 0;
@@ -40,11 +44,18 @@ APTR DT_OpenKey(CONST_STRPTR key asm("a0"), struct DeviceTreeBase *DTBase asm("a
             {   
                 if (!dt_strcmp(ptrbuf, node->on_name))
                 {   
-                    return node;
+                    ret = node;
+                    found = 1;
+                    break;
                 }
             }
+
+            if (!found)
+                return NULL;
+
+            key += _strlen(ptrbuf);
         }
     }
 
-    return NULL;
+    return ret;
 }

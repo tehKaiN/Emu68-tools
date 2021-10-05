@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14.0)
-project(devicetree VERSION 1.1.0)
+project(devicetree VERSION 1.2.0)
 get_verstring(VERSTRING)
 
 add_link_options(-ffreestanding -nostdlib -nostartfiles -Wl,-e_rom_start -Wl,-T${CMAKE_CURRENT_SOURCE_DIR}/ldscript.lds)
@@ -19,6 +19,7 @@ add_executable(devicetree.resource
     src/getproplen.c
     src/getchild.c
     src/getproperty.c
+    src/getparent.c
 )
 
 target_include_directories(devicetree.resource PRIVATE include)

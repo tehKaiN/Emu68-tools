@@ -28,6 +28,7 @@ APTR DT_GetProperty(APTR key, APTR prev);
 ULONG DT_GetPropLen(APTR property);
 CONST_STRPTR DT_GetPropName(APTR property);
 CONST_APTR DT_GetPropValue(APTR property);
+APTR DT_GetParent(APTR key);
 
 #ifdef __cplusplus
 }

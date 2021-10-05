@@ -75,5 +75,11 @@
 #ifdef __CLIB_PRAGMA_AMICALL
  #pragma amicall(DeviceTreeBase, 0x30, DT_GetPropValue(a0))
 #endif /* __CLIB_PRAGMA_AMICALL */
+#ifdef __CLIB_PRAGMA_LIBCALL
+ #pragma libcall DeviceTreeBase DT_GetParent 36 801
+#endif /* __CLIB_PRAGMA_LIBCALL */
+#ifdef __CLIB_PRAGMA_AMICALL
+ #pragma amicall(DeviceTreeBase, 0x36, DT_GetParent(a0))
+#endif /* __CLIB_PRAGMA_AMICALL */
 
 #endif /* PRAGMAS_DEVICETREE_PRAGMAS_H */
