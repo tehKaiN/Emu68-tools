@@ -20,6 +20,8 @@ struct SDCardBase {
     struct Device       sd_Device;
     struct ExecBase *   sd_SysBase;
     APTR                sd_DeviceTreeBase;
+    APTR                sd_MailBox;
+    APTR                sd_SDHC;
 };
 
 #define SDCARD_VERSION  0

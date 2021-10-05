@@ -138,6 +138,80 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
 
             binding.cb_ConfigDev->cd_Flags &= ~CDF_CONFIGME;
             binding.cb_ConfigDev->cd_Driver = SDCardBase;
+
+            /* Get VC4 physical address of mailbox interface. Subsequently it will be translated to m68k physical address */
+
+            APTR mbox = DT_OpenKey("/soc/mailbox");
+            if (mbox)
+            {
+                APTR key = mbox;
+                int size_cells = 0;
+                int address_cells = 0;
+
+                do {
+                    const ULONG *siz = DT_GetPropValue(DT_FindProperty(key, "#size-cells"));
+                    const ULONG *addr = DT_GetPropValue(DT_FindProperty(key, "#address-cells"));
+
+                    if (siz != NULL)
+                        size_cells = *siz;
+
+                    if (addr != NULL)
+                        address_cells = *addr;
+
+                    key = DT_GetParent(key);
+                } while (key && (size_cells == 0 || address_cells == 0));
+
+                if (size_cells == 0)
+                    size_cells = 1;
+                if (address_cells == 0)
+                    address_cells = 1;
+
+                const ULONG *reg = DT_GetPropValue(DT_FindProperty(mbox, "reg"));
+
+                SDCardBase->sd_MailBox = (APTR)reg[address_cells - 1];
+
+                DT_CloseKey(mbox);
+            }
+
+            /* Open /aliases and find out the "link" to the emmc alias */
+            APTR aliases = DT_OpenKey("/aliases");
+            if (aliases)
+            {
+                CONST_STRPTR mmc_alias = DT_GetPropValue(DT_FindProperty(aliases, "mmc"));
+                
+                /* Open the alias and find out the MMIO VC4 physical base address */
+                APTR mmc = DT_OpenKey(mmc_alias);
+                if (mmc) {
+                    int size_cells = 0;
+                    int address_cells = 0;
+                    APTR key = mmc;
+
+                    do {
+                        const ULONG *siz = DT_GetPropValue(DT_FindProperty(key, "#size-cells"));
+                        const ULONG *addr = DT_GetPropValue(DT_FindProperty(key, "#address-cells"));
+
+                        if (siz != NULL)
+                            size_cells = *siz;
+
+                        if (addr != NULL)
+                            address_cells = *addr;
+
+                        key = DT_GetParent(key);
+                    } while (key && (size_cells == 0 || address_cells == 0));
+
+                    if (size_cells == 0)
+                        size_cells = 1;
+                    if (address_cells == 0)
+                        address_cells = 1;
+
+                    const ULONG *reg = DT_GetPropValue(DT_FindProperty(mmc, "reg"));
+                    SDCardBase->sd_SDHC = (APTR)reg[address_cells - 1];
+                    DT_CloseKey(mmc);
+                }
+                DT_CloseKey(aliases);
+            }
+
+            asm volatile("move.l %0, d0; move.l %1, d1; illegal"::"r"(SDCardBase->sd_SDHC),"r"(SDCardBase->sd_MailBox):"d0","d1","memory");
         }
 
         CloseLibrary((struct Library*)ExpansionBase);
