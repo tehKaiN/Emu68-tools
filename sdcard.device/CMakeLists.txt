@@ -11,6 +11,7 @@ add_executable(brcm-sdhc.device
     src/init.c
     src/beginio.c
     src/abortio.c
+    src/mbox.c
 )
 
 add_custom_command(

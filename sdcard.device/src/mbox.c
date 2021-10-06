@@ -1,0 +1,179 @@
+/*
+    Copyright © 2021 Michal Schulz <michal.schulz@gmx.de>
+    https://github.com/michalsc
+
+    This Source Code Form is subject to the terms of the
+    Mozilla Public License, v. 2.0. If a copy of the MPL was not distributed
+    with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
+*/
+
+
+#include <exec/types.h>
+#include <exec/execbase.h>
+#include <exec/io.h>
+#include <exec/errors.h>
+
+#include <proto/exec.h>
+#include <proto/expansion.h>
+#include <proto/devicetree.h>
+
+#include <libraries/configregs.h>
+#include <libraries/configvars.h>
+
+#include <stdint.h>
+
+#include "sdcard.h"
+
+/* Endian support */
+
+static inline uint64_t LE64(uint64_t x) { return __builtin_bswap64(x); }
+static inline uint32_t LE32(uint32_t x) { return __builtin_bswap32(x); }
+static inline uint16_t LE16(uint16_t x) { return __builtin_bswap16(x); }
+
+/* status register flags */
+
+#define MBOX_TX_FULL (1UL << 31)
+#define MBOX_RX_EMPTY (1UL << 30)
+#define MBOX_CHANMASK 0xF
+
+/* VideoCore tags used. */
+
+#define VCTAG_GET_ARM_MEMORY     0x00010005
+#define VCTAG_GET_CLOCK_RATE     0x00030002
+
+static uint32_t mbox_recv(uint32_t channel, struct SDCardBase * SDCardBase)
+{
+	volatile uint32_t *mbox_read = (uint32_t*)(SDCardBase->sd_MailBox);
+	volatile uint32_t *mbox_status = (uint32_t*)(SDCardBase->sd_MailBox + 0x18);
+	uint32_t response, status;
+
+	do
+	{
+		do
+		{
+			status = LE32(*mbox_status);
+			asm volatile("nop");
+		}
+		while (status & MBOX_RX_EMPTY);
+
+		asm volatile("nop");
+		response = LE32(*mbox_read);
+		asm volatile("nop");
+	}
+	while ((response & MBOX_CHANMASK) != channel);
+
+	return (response & ~MBOX_CHANMASK);
+}
+
+static void mbox_send(uint32_t channel, uint32_t data, struct SDCardBase * SDCardBase)
+{
+	volatile uint32_t *mbox_write = (uint32_t*)(SDCardBase->sd_MailBox + 0x20);
+	volatile uint32_t *mbox_status = (uint32_t*)(SDCardBase->sd_MailBox + 0x18);
+	uint32_t status;
+
+	data &= ~MBOX_CHANMASK;
+	data |= channel & MBOX_CHANMASK;
+
+	do
+	{
+		status = LE32(*mbox_status);
+		asm volatile("nop");
+	}
+	while (status & MBOX_TX_FULL);
+
+	asm volatile("nop");
+	*mbox_write = LE32(data);
+}
+
+uint32_t get_clock_rate(uint32_t clock_id, struct SDCardBase * SDCardBase)
+{
+    struct ExecBase *SysBase = SDCardBase->sd_SysBase;
+
+    ULONG *FBReq = SDCardBase->sd_Request;
+    ULONG len = 8*4;
+
+    FBReq[0] = LE32(4*8);       // Length
+    FBReq[1] = 0;               // Request
+    FBReq[2] = LE32(0x00030002);// GetClockRate
+    FBReq[3] = LE32(8);
+    FBReq[4] = 0;
+    FBReq[5] = LE32(clock_id);
+    FBReq[6] = 0;
+    FBReq[7] = 0;
+
+    CachePreDMA(FBReq, &len, DMA_ReadFromRAM);
+    mbox_send(8, (ULONG)FBReq, SDCardBase);
+    mbox_recv(8, SDCardBase);
+
+    return LE32(FBReq[6]);
+}
+
+uint32_t get_max_clock_rate(uint32_t clock_id, struct SDCardBase * SDCardBase)
+{
+    struct ExecBase *SysBase = SDCardBase->sd_SysBase;
+
+    ULONG *FBReq = SDCardBase->sd_Request;
+    ULONG len = 8*4;
+
+    FBReq[0] = LE32(4*8);       // Length
+    FBReq[1] = 0;               // Request
+    FBReq[2] = LE32(0x00030004);// GetMaxClockRate
+    FBReq[3] = LE32(8);
+    FBReq[4] = 0;
+    FBReq[5] = LE32(clock_id);
+    FBReq[6] = 0;
+    FBReq[7] = 0;
+
+    CachePreDMA(FBReq, &len, DMA_ReadFromRAM);
+    mbox_send(8, (ULONG)FBReq, SDCardBase);
+    mbox_recv(8, SDCardBase);
+
+    return LE32(FBReq[6]);
+}
+
+uint32_t get_min_clock_rate(uint32_t clock_id, struct SDCardBase * SDCardBase)
+{
+    struct ExecBase *SysBase = SDCardBase->sd_SysBase;
+
+    ULONG *FBReq = SDCardBase->sd_Request;
+    ULONG len = 8*4;
+
+    FBReq[0] = LE32(4*8);       // Length
+    FBReq[1] = 0;               // Request
+    FBReq[2] = LE32(0x00030007);// GetClockRate
+    FBReq[3] = LE32(8);
+    FBReq[4] = 0;
+    FBReq[5] = LE32(clock_id);
+    FBReq[6] = 0;
+    FBReq[7] = 0;
+
+    CachePreDMA(FBReq, &len, DMA_ReadFromRAM);
+    mbox_send(8, (ULONG)FBReq, SDCardBase);
+    mbox_recv(8, SDCardBase);
+
+    return LE32(FBReq[6]);
+}
+
+uint32_t set_clock_rate(uint32_t clock_id, uint32_t speed, struct SDCardBase * SDCardBase)
+{
+    struct ExecBase *SysBase = SDCardBase->sd_SysBase;
+
+    ULONG *FBReq = SDCardBase->sd_Request;
+    ULONG len = 9*4;
+
+    FBReq[0] = LE32(4*9);       // Length
+    FBReq[1] = 0;               // Request
+    FBReq[2] = LE32(0x00038002);// SetClockRate
+    FBReq[3] = LE32(12);
+    FBReq[4] = 0;
+    FBReq[5] = LE32(clock_id);
+    FBReq[6] = LE32(speed);
+    FBReq[7] = 0;
+    FBReq[8] = 0;
+
+    CachePreDMA(FBReq, &len, DMA_ReadFromRAM);
+    mbox_send(8, (ULONG)FBReq, SDCardBase);
+    mbox_recv(8, SDCardBase);
+
+    return LE32(FBReq[6]);
+}

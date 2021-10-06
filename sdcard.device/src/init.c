@@ -97,6 +97,32 @@ ULONG SD_Close(struct IORequest * io asm("a1"), struct SDCardBase * SDCardBase a
 extern const char deviceName[];
 extern const char deviceIdString[];
 
+/*
+    Some properties, like e.g. #size-cells, are not always available in a key, but in that case the properties
+    should be searched for in the parent. The process repeats recursively until either root key is found
+    or the property is found, whichever occurs first
+*/
+CONST_APTR GetPropValueRecursive(APTR key, CONST_STRPTR property, APTR DeviceTreeBase)
+{
+    do {
+        /* Find the property first */
+        APTR property = DT_FindProperty(key, property);
+
+        if (property)
+        {
+            /* If property is found, get its value and exit */
+            return DT_GetPropValue(property);
+        }
+        
+        /* Property was not found, go to the parent and repeat */
+        key = DT_GetParent(key);
+    } while (key);
+
+    return NULL;
+}
+
+
+
 APTR Init(struct ExecBase *SysBase asm("a6"))
 {
     struct DeviceTreeBase *DeviceTreeBase = NULL;
@@ -117,8 +143,13 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
 
         if (base_pointer != NULL)
         {
+            APTR key;
+            
             SDCardBase = (struct SDCardBase *)((UBYTE *)base_pointer + BASE_NEG_SIZE);
             MakeFunctions(SDCardBase, relFuncTable, (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+
+            SDCardBase->sd_RequestBase = AllocMem(256*4, MEMF_FAST);
+            SDCardBase->sd_Request = (ULONG *)(((intptr_t)SDCardBase->sd_RequestBase + 127) & ~127);
 
             SDCardBase->sd_Device.dd_Library.lib_Node.ln_Type = NT_DEVICE;
             SDCardBase->sd_Device.dd_Library.lib_Node.ln_Pri = SDCARD_PRIORITY;
@@ -134,109 +165,91 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
             SDCardBase->sd_DeviceTreeBase = DeviceTreeBase;
 
             SumLibrary((struct Library*)SDCardBase);
-            AddDevice((struct Device *)SDCardBase);
-
-            binding.cb_ConfigDev->cd_Flags &= ~CDF_CONFIGME;
-            binding.cb_ConfigDev->cd_Driver = SDCardBase;
 
             /* Get VC4 physical address of mailbox interface. Subsequently it will be translated to m68k physical address */
-
-            APTR mbox = DT_OpenKey("/soc/mailbox");
-            if (mbox)
+            key = DT_OpenKey("/aliases");
+            if (key)
             {
-                APTR key = mbox;
-                int size_cells = 0;
-                int address_cells = 0;
+                CONST_STRPTR mbox_alias = DT_GetPropValue(DT_FindProperty(key, "mailbox"));
 
-                do {
-                    const ULONG *siz = DT_GetPropValue(DT_FindProperty(key, "#size-cells"));
-                    const ULONG *addr = DT_GetPropValue(DT_FindProperty(key, "#address-cells"));
+                DT_CloseKey(key);
+               
+                if (mbox_alias != NULL)
+                {
+                    key = DT_OpenKey(mbox_alias);
 
-                    if (siz != NULL)
-                        size_cells = *siz;
+                    if (key)
+                    {
+                        int size_cells = 1;
+                        int address_cells = 1;
 
-                    if (addr != NULL)
-                        address_cells = *addr;
-
-                    key = DT_GetParent(key);
-                } while (key && (size_cells == 0 || address_cells == 0));
-
-                if (size_cells == 0)
-                    size_cells = 1;
-                if (address_cells == 0)
-                    address_cells = 1;
-
-                const ULONG *reg = DT_GetPropValue(DT_FindProperty(mbox, "reg"));
-
-                SDCardBase->sd_MailBox = (APTR)reg[address_cells - 1];
-
-                DT_CloseKey(mbox);
-            }
-
-            /* Open /aliases and find out the "link" to the emmc alias */
-            APTR aliases = DT_OpenKey("/aliases");
-            if (aliases)
-            {
-                CONST_STRPTR mmc_alias = DT_GetPropValue(DT_FindProperty(aliases, "mmc"));
-                
-                /* Open the alias and find out the MMIO VC4 physical base address */
-                APTR mmc = DT_OpenKey(mmc_alias);
-                if (mmc) {
-                    int size_cells = 0;
-                    int address_cells = 0;
-                    APTR key = mmc;
-
-                    do {
-                        const ULONG *siz = DT_GetPropValue(DT_FindProperty(key, "#size-cells"));
-                        const ULONG *addr = DT_GetPropValue(DT_FindProperty(key, "#address-cells"));
+                        const ULONG * siz = GetPropValueRecursive(key, "#size_cells", DeviceTreeBase);
+                        const ULONG * addr = GetPropValueRecursive(key, "#address-cells", DeviceTreeBase);
 
                         if (siz != NULL)
                             size_cells = *siz;
-
+                        
                         if (addr != NULL)
                             address_cells = *addr;
 
-                        key = DT_GetParent(key);
-                    } while (key && (size_cells == 0 || address_cells == 0));
+                        const ULONG *reg = DT_GetPropValue(DT_FindProperty(key, "reg"));
 
-                    if (size_cells == 0)
-                        size_cells = 1;
-                    if (address_cells == 0)
-                        address_cells = 1;
+                        SDCardBase->sd_MailBox = (APTR)reg[address_cells - 1];
 
-                    const ULONG *reg = DT_GetPropValue(DT_FindProperty(mmc, "reg"));
-                    SDCardBase->sd_SDHC = (APTR)reg[address_cells - 1];
-                    DT_CloseKey(mmc);
+                        DT_CloseKey(key);
+                    }
                 }
-                DT_CloseKey(aliases);
             }
 
-            mbox = DT_OpenKey("/soc");
-            if (mbox)
+            /* Open /aliases and find out the "link" to the emmc */
+            key = DT_OpenKey("/aliases");
+            if (key)
             {
-                APTR key = mbox;
-                int size_cells = 0;
-                int address_cells = 0;
+                CONST_STRPTR mmc_alias = DT_GetPropValue(DT_FindProperty(key, "mmc"));
 
-                do {
-                    const ULONG *siz = DT_GetPropValue(DT_FindProperty(key, "#size-cells"));
-                    const ULONG *addr = DT_GetPropValue(DT_FindProperty(key, "#address-cells"));
+                DT_CloseKey(key);
+               
+                if (mmc_alias != NULL)
+                {
+                    /* Open the alias and find out the MMIO VC4 physical base address */
+                    key = DT_OpenKey(mmc_alias);
+                    if (key) {
+                        int size_cells = 1;
+                        int address_cells = 1;
 
-                    if (siz != NULL)
-                        size_cells = *siz;
+                        const ULONG * siz = GetPropValueRecursive(key, "#size_cells", DeviceTreeBase);
+                        const ULONG * addr = GetPropValueRecursive(key, "#address-cells", DeviceTreeBase);
 
-                    if (addr != NULL)
-                        address_cells = *addr;
+                        if (siz != NULL)
+                            size_cells = *siz;
+                        
+                        if (addr != NULL)
+                            address_cells = *addr;
 
-                    key = DT_GetParent(key);
-                } while (key && (size_cells == 0 || address_cells == 0));
+                        const ULONG *reg = DT_GetPropValue(DT_FindProperty(key, "reg"));
+                        SDCardBase->sd_SDHC = (APTR)reg[address_cells - 1];
+                        DT_CloseKey(key);
+                    }
+                }               
+            }
 
-                if (size_cells == 0)
-                    size_cells = 1;
-                if (address_cells == 0)
-                    address_cells = 1;
+            /* Open /soc key and learn about VC4 to CPU mapping. Use it to adjust the addresses obtained above */
+            key = DT_OpenKey("/soc");
+            if (key)
+            {
+                int size_cells = 1;
+                int address_cells = 1;
 
-                const ULONG *reg = DT_GetPropValue(DT_FindProperty(mbox, "ranges"));
+                const ULONG * siz = GetPropValueRecursive(key, "#size_cells", DeviceTreeBase);
+                const ULONG * addr = GetPropValueRecursive(key, "#address-cells", DeviceTreeBase);
+
+                if (siz != NULL)
+                    size_cells = *siz;
+                
+                if (addr != NULL)
+                    address_cells = *addr;
+
+                const ULONG *reg = DT_GetPropValue(DT_FindProperty(key, "ranges"));
 
                 ULONG phys_vc4 = reg[address_cells - 1];
                 ULONG phys_cpu = reg[2 * address_cells - 1];
@@ -244,7 +257,25 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                 SDCardBase->sd_MailBox = (APTR)((ULONG)SDCardBase->sd_MailBox - phys_vc4 + phys_cpu);
                 SDCardBase->sd_SDHC = (APTR)((ULONG)SDCardBase->sd_SDHC - phys_vc4 + phys_cpu);
 
-                DT_CloseKey(mbox);
+                DT_CloseKey(key);
+            }
+
+            /* If both sd_MailBox and sd_SDHC are set, everything went OK and now we can add the device */
+            if (SDCardBase->sd_MailBox != NULL && SDCardBase->sd_SDHC != NULL)
+            {
+                AddDevice((struct Device *)SDCardBase);
+
+                binding.cb_ConfigDev->cd_Flags &= ~CDF_CONFIGME;
+                binding.cb_ConfigDev->cd_Driver = SDCardBase;
+            }
+            else
+            {
+                /*  
+                    Something failed, device will not be added to the system, free allocated memory and 
+                    return NULL instead
+                */
+                FreeMem(base_pointer, BASE_NEG_SIZE + BASE_POS_SIZE);
+                SDCardBase = NULL;
             }
         }
 

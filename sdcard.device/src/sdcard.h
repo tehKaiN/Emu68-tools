@@ -22,6 +22,8 @@ struct SDCardBase {
     APTR                sd_DeviceTreeBase;
     APTR                sd_MailBox;
     APTR                sd_SDHC;
+    ULONG *             sd_Request;
+    APTR                sd_RequestBase;
 };
 
 #define SDCARD_VERSION  0
