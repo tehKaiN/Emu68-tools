@@ -246,8 +246,6 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
 
                 DT_CloseKey(mbox);
             }
-
-            asm volatile("move.l %0, d0; move.l %1, d1; illegal"::"r"(SDCardBase->sd_SDHC),"r"(SDCardBase->sd_MailBox):"d0","d1","memory");
         }
 
         CloseLibrary((struct Library*)ExpansionBase);
