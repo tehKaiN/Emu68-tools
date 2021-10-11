@@ -83,9 +83,7 @@ SECTIONS
         *(.text .text.* .rodata .rodata.*)
         *(.eh_frame)
 
-        . = ALIGN(4096) - 4;
-
-        LONG(0xdeadbeef)
+        . = ALIGN(4096);
     } >rom = 0xff
 
     _rom_end = .;
