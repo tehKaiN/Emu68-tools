@@ -21,6 +21,13 @@
 
 #include <stdint.h>
 
+struct sd_scr
+{
+    uint32_t    scr[2];
+    uint32_t    sd_bus_widths;
+    int         sd_version;
+};
+
 struct SDCardBase {
     struct Device       sd_Device;
     struct ExecBase *   sd_SysBase;
@@ -35,13 +42,29 @@ struct SDCardBase {
     struct TimeRequest  sd_TimeReq;
     struct MsgPort      sd_Port;
 
+    /* MBox functions */
+    uint32_t          (*get_clock_rate)(uint32_t clock_id, struct SDCardBase * SDCardBase);
+    uint32_t          (*set_clock_rate)(uint32_t clock_id, uint32_t speed, struct SDCardBase * SDCardBase);
+    uint32_t          (*get_clock_state)(uint32_t id, struct SDCardBase * SDCardBase);
+    uint32_t          (*set_clock_state)(uint32_t id, uint32_t state, struct SDCardBase * SDCardBase);
+    uint32_t          (*get_power_state)(uint32_t id, struct SDCardBase * SDCardBase);
+    uint32_t          (*set_power_state)(uint32_t id, uint32_t state, struct SDCardBase * SDCardBase);
+    uint32_t          (*set_led_state)(uint32_t id, uint32_t state, struct SDCardBase * SDCardBase);
+
     /* SD Card related functions */
     ULONG             (*sd_GetBaseClock)(struct SDCardBase *);
     int               (*sd_PowerCycle)(struct SDCardBase *);
     void              (*sd_SetLED)(int on, struct SDCardBase *);
     void              (*sd_Delay)(ULONG us, struct SDCardBase *);
+    int               (*sd_CMD_int)(ULONG cmd, ULONG arg, ULONG timeout, struct SDCardBase *);
     int               (*sd_CMD)(ULONG cmd, ULONG arg, ULONG timeout, struct SDCardBase *);
+    int               (*sd_CardInit)(struct SDCardBase *SDCardBase);
+    int               (*sd_Write)(uint8_t *buf, uint32_t buf_size, uint32_t block_no, struct SDCardBase *SDCardBase);
+    int               (*sd_Read)(uint8_t *buf, uint32_t buf_size, uint32_t block_no, struct SDCardBase *SDCardBase);
 
+    struct sd_scr       sd_SCR;
+
+    UWORD               sd_BlockSize;
     UWORD               sd_BlocksToTransfer;
     APTR                sd_Buffer;
 
@@ -70,7 +93,7 @@ struct SDCardUnit {
 };
 
 #define SDCARD_VERSION  0
-#define SDCARD_REVISION 1
+#define SDCARD_REVISION 5
 #define SDCARD_PRIORITY 20
 
 #define BASE_NEG_SIZE   (6 * 6)
@@ -293,9 +316,55 @@ uint32_t set_power_state(uint32_t id, uint32_t state, struct SDCardBase * SDCard
 #define APP_CMD                 CMD_55
 #define GEN_CMD                 CMD_56
 
+#define SD_VER_UNKNOWN      0
+#define SD_VER_1            1
+#define SD_VER_1_1          2
+#define SD_VER_2            3
+#define SD_VER_3            4
+#define SD_VER_4            5
 
 #define SD_RESET_CMD            (1 << 25)
 #define SD_RESET_DAT            (1 << 26)
 #define SD_RESET_ALL            (1 << 24)
+
+/* Endian support */
+
+static inline uint64_t LE64(uint64_t x) { return __builtin_bswap64(x); }
+static inline uint32_t LE32(uint32_t x) { return __builtin_bswap32(x); }
+static inline uint16_t LE16(uint16_t x) { return __builtin_bswap16(x); }
+
+static inline ULONG rd32(APTR addr, ULONG offset)
+{
+    APTR addr_off = (APTR)((ULONG)addr + offset);
+    ULONG val = LE32(*(volatile ULONG *)addr_off);
+    asm volatile("nop");
+    return val;
+}
+
+static inline void wr32(APTR addr, ULONG offset, ULONG val)
+{
+    APTR addr_off = (APTR)((ULONG)addr + offset);
+    *(volatile ULONG *)addr_off = LE32(val);
+    asm volatile("nop");
+}
+
+static inline ULONG rd32be(APTR addr, ULONG offset)
+{
+    APTR addr_off = (APTR)((ULONG)addr + offset);
+    ULONG val = *(volatile ULONG *)addr_off;
+    asm volatile("nop");
+    return val;
+}
+
+static inline void wr32be(APTR addr, ULONG offset, ULONG val)
+{
+    APTR addr_off = (APTR)((ULONG)addr + offset);
+    *(volatile ULONG *)addr_off = val;
+    asm volatile("nop");
+}
+
+#define TIMEOUT_WAIT(check_func, tout) \
+    do { ULONG cnt = (tout) / 100; if (cnt == 0) cnt = 1; while(cnt != 0) { if (check_func) break; \
+    cnt = cnt - 1; SDCardBase->sd_Delay(100, SDCardBase); }  } while(0)
 
 #endif /* _SDCARD_H */
