@@ -1,6 +1,6 @@
 # Emu68-tools: Utilities for your m68k Raspberry Pi
 
-Welcome to my #Emu68 companion project. The intention behind Emu68-tools is to separate the software written for the AArch32/AArch64 host and software and tools written for the m68k side of Emu68. The tools include resources, libraries and (in future) small applications which will allow to monitor or control behaviour of Emu68. At the moment of writing this README file, two subproject are defined.
+Welcome to my [Emu68](https://github.com/michalsc/Emu68) companion project. The intention behind Emu68-tools is to separate the software written for the AArch32/AArch64 host and software and tools written for the m68k side of Emu68. The tools include resources, libraries and (in future) small applications which will allow to monitor or control behaviour of Emu68. At the moment of writing this README file, two subproject are defined.
 
 ## devicetree.resource
 
