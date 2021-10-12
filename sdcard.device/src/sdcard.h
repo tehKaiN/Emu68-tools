@@ -28,6 +28,8 @@ struct sd_scr
     int         sd_version;
 };
 
+struct SDCardUnit;
+
 struct SDCardBase {
     struct Device       sd_Device;
     struct ExecBase *   sd_SysBase;
@@ -37,6 +39,9 @@ struct SDCardBase {
     ULONG *             sd_Request;
     APTR                sd_RequestBase;
     ULONG               sd_SDHCClock;
+
+    struct SDCardUnit * sd_Units[5];    /* 5 units at most for the case where SDCard has 4 primary partitions type 0x76 */
+    UWORD               sd_UnitCount;
 
     struct SignalSemaphore sd_Lock;
     struct TimeRequest  sd_TimeReq;
@@ -87,14 +92,20 @@ struct SDCardBase {
 };
 
 struct SDCardUnit {
+    struct Unit         su_Unit;
     struct SDCardBase * su_Base;
-    uint64_t            su_LowAddr;
-    uint64_t            su_HighAddr;
+    uint32_t            su_StartBlock;
+    uint32_t            su_BlockCount;
+    uint8_t             su_UnitNum;
 };
+
+void UnitTask();
 
 #define SDCARD_VERSION  0
 #define SDCARD_REVISION 5
 #define SDCARD_PRIORITY 20
+
+#define UNIT_TASK_PRIORITY  10
 
 #define BASE_NEG_SIZE   (6 * 6)
 #define BASE_POS_SIZE   (sizeof(struct SDCardBase))
@@ -254,6 +265,7 @@ uint32_t set_power_state(uint32_t id, uint32_t state, struct SDCardBase * SDCard
 #define CMD_5               (SD_CMD_INDEX(5) | SD_RESP_R4)
 #define CMD_6               (SD_CMD_INDEX(6) | SD_RESP_R1)
 #define CMD_7               (SD_CMD_INDEX(7) | SD_RESP_R1b)
+#define CMD_7nr             (SD_CMD_INDEX(7))
 #define CMD_8               (SD_CMD_INDEX(8) | SD_RESP_R7)
 #define CMD_9               (SD_CMD_INDEX(9) | SD_RESP_R2)
 #define CMD_10              (SD_CMD_INDEX(10) | SD_RESP_R2)
@@ -288,7 +300,7 @@ uint32_t set_power_state(uint32_t id, uint32_t state, struct SDCardBase * SDCard
 #define IO_SET_OP_COND          CMD_5
 #define SWITCH_FUNC             CMD_6
 #define SELECT_CARD             CMD_7
-#define DESELECT_CARD           CMD_7
+#define DESELECT_CARD           CMD_7nr
 #define SELECT_DESELECT_CARD    CMD_7
 #define SEND_IF_COND            CMD_8
 #define SEND_CSD                CMD_9

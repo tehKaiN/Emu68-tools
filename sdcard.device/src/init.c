@@ -36,6 +36,7 @@
 #include <exec/errors.h>
 #include <exec/lists.h>
 #include <exec/nodes.h>
+#include <exec/memory.h>
 #include <inline/alib.h>
 
 #include <proto/exec.h>
@@ -82,6 +83,12 @@ void SD_Open(struct IORequest * io asm("a1"), LONG unitNumber asm("d0"),
 {
     (void)flags;
     (void)unitNumber;
+
+    if (unitNumber >= SDCardBase->sd_UnitCount) {
+        io->io_Error = IOERR_OPENFAIL;
+    }
+
+    
 
     /* 
         Do whatever necessary to open given unit number with flags, set NT_REPLYMSG if 
@@ -358,35 +365,104 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                 SDCardBase->set_clock_state(1, 1, SDCardBase);
                                 
                 /* Initialize the card */
-                SDCardBase->sd_CardInit(SDCardBase);
-
-                RawDoFmt("[brcm-sdhc] Init complete.\n", NULL, (APTR)putch, NULL);
-
-
-                uint8_t buff[512];
-                
-                RawDoFmt("[brcm-sdhc] Attempting to read block at 0\n", NULL, (APTR)putch, NULL);
-                ULONG ret = SDCardBase->sd_Read(buff, 512, 0, SDCardBase);
-                RawDoFmt("[brcm-sdhc] Result %ld\n", &ret, (APTR)putch, NULL);
-
-                if (ret > 0)
+                if (0 == SDCardBase->sd_CardInit(SDCardBase))
                 {
-                    for (int i=0; i < 4; i++) {
-                        uint8_t *b = &buff[0x1be + 16 * i];
-                        ULONG p0_Type = b[4];
-                        ULONG p0_Start = b[8] | (b[9] << 8) | (b[10] << 16) | (b[11] << 24);
-                        ULONG p0_Len = b[12] | (b[13] << 8) | (b[14] << 16) | (b[15] << 24);
+                    uint8_t buff[512];
+                    /* Initializataion was successful. Read parition table and create the units */
 
-                        if (p0_Type != 0) {
-                            ULONG args[] = {
-                                i, p0_Type, p0_Start, p0_Len 
-                            };
-                            RawDoFmt("[brcm-sdhc] Partition%ld: type 0x%02lx, start 0x%08lx, length 0x%08lx\n", args, (APTR)putch, NULL);
+                    RawDoFmt("[brcm-sdhc] Attempting to read card capacity\n", NULL, (APTR)putch, NULL);
+                    SDCardBase->sd_CMD(DESELECT_CARD, 0, 1000000, SDCardBase);
+                    SDCardBase->sd_CMD(SEND_CSD, SDCardBase->sd_CardRCA << 16, 1000000, SDCardBase);
+
+                    if (!FAIL(SDCardBase)) {
+                        SDCardBase->sd_UnitCount = 1;
+                        SDCardBase->sd_Units[0] = AllocMem(sizeof(struct SDCardUnit), MEMF_PUBLIC | MEMF_CLEAR);
+                        SDCardBase->sd_Units[0]->su_StartBlock = 0;
+                        SDCardBase->sd_Units[0]->su_BlockCount = 1024 * ((SDCardBase->sd_Res1 >> 8) & 0x3fffff) + 1024;
+                        SDCardBase->sd_Units[0]->su_Base = SDCardBase;
+                        SDCardBase->sd_Units[0]->su_UnitNum = 0;
+
+                        ULONG size_gb = SDCardBase->sd_Units[0]->su_BlockCount / 2048;
+                        RawDoFmt("[brcm-sdhc] Reported card capacity: %ld MB", &size_gb, (APTR)putch, NULL);
+                        RawDoFmt(" (%ld sectors)\n", &SDCardBase->sd_Units[0]->su_BlockCount, (APTR)putch, NULL);
+
+                        RawDoFmt("[brcm-sdhc] Attempting to read block at 0\n", NULL, (APTR)putch, NULL);
+                        ULONG ret = SDCardBase->sd_Read(buff, 512, 0, SDCardBase);
+                        RawDoFmt("[brcm-sdhc] Result %ld\n", &ret, (APTR)putch, NULL);
+
+                        if (ret > 0)
+                        {
+                            for (int i=0; i < 4; i++) {
+                                uint8_t *b = &buff[0x1be + 16 * i];
+                                ULONG p0_Type = b[4];
+                                ULONG p0_Start = b[8] | (b[9] << 8) | (b[10] << 16) | (b[11] << 24);
+                                ULONG p0_Len = b[12] | (b[13] << 8) | (b[14] << 16) | (b[15] << 24);
+
+                                // Partition does exist. List it.
+                                if (p0_Type != 0) {
+                                    ULONG args[] = {
+                                        i, p0_Type, p0_Start, p0_Len 
+                                    };
+                                    RawDoFmt("[brcm-sdhc] Partition%ld: type 0x%02lx, start 0x%08lx, length 0x%08lx\n", args, (APTR)putch, NULL);
+
+                                    // Partition type 0x76 (Amithlon-like) creates new virtual unit with given capacity
+                                    if (p0_Type == 0x76) {
+                                        struct SDCardUnit *unit = AllocMem(sizeof(struct SDCardUnit), MEMF_PUBLIC | MEMF_CLEAR);
+                                        unit->su_StartBlock = p0_Start;
+                                        unit->su_BlockCount = p0_Len;
+                                        unit->su_Base = SDCardBase;
+                                        unit->su_UnitNum = SDCardBase->sd_UnitCount;
+                                        
+                                        SDCardBase->sd_Units[SDCardBase->sd_UnitCount++] = unit;
+                                    }
+                                }
+                            }
                         }
                     }
-                    
-                }
+                  
+                    RawDoFmt("[brcm-sdhc] Init complete.\n", NULL, (APTR)putch, NULL);
 
+                    /* Initialization is complete. Create all tasks for the units now */
+                    for (int unit = 0; unit < SDCardBase->sd_UnitCount; unit++)
+                    {
+                        APTR entry = UnitTask;
+                        struct Task *task = AllocMem(sizeof(struct Task), MEMF_PUBLIC | MEMF_CLEAR);
+                        struct MemList *ml = AllocMem(sizeof(struct MemList) + 2*sizeof(struct MemEntry), MEMF_PUBLIC | MEMF_CLEAR);
+                        ULONG *stack = AllocMem(1024 * sizeof(ULONG), MEMF_PUBLIC | MEMF_CLEAR);
+                        STRPTR unit_name_copy = AllocMem(20, MEMF_PUBLIC | MEMF_CLEAR);
+                        CopyMem("brcm-sdhc unit 0", unit_name_copy, 20);
+
+                        ml->ml_NumEntries = 3;
+                        ml->ml_ME[0].me_Un.meu_Addr = task;
+                        ml->ml_ME[0].me_Length = sizeof(struct Task);
+
+                        ml->ml_ME[1].me_Un.meu_Addr = &stack[0];
+                        ml->ml_ME[1].me_Length = 4096;
+
+                        ml->ml_ME[2].me_Un.meu_Addr = unit_name_copy;
+                        ml->ml_ME[2].me_Length = 20;
+
+                        unit_name_copy[15] += unit;
+
+                        task->tc_UserData = SDCardBase->sd_Units[unit];
+                        task->tc_SPLower = &stack[0];
+                        task->tc_SPUpper = &stack[1023];
+                        task->tc_SPReg = task->tc_SPUpper;
+
+                        task->tc_Node.ln_Name = unit_name_copy;
+                        task->tc_Node.ln_Type = NT_TASK;
+                        task->tc_Node.ln_Pri = UNIT_TASK_PRIORITY;
+
+                        NewList(&task->tc_MemEntry);
+                        AddHead(&task->tc_MemEntry, &ml->ml_Node);
+
+                        entry = (APTR)((ULONG)entry + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+
+                        AddTask(task, entry, NULL);
+                    }
+
+                }
+                
                 binding.cb_ConfigDev->cd_Flags &= ~CDF_CONFIGME;
                 binding.cb_ConfigDev->cd_Driver = SDCardBase;
             }
