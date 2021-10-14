@@ -50,21 +50,9 @@
 #include "emmc.h"
 #include "mbox.h"
 
-extern UWORD relFuncTable[];
-asm(
-"       .globl _relFuncTable    \n"
-"_relFuncTable:                 \n"
-"       .short _SD_Open         \n"
-"       .short _SD_Close        \n"
-"       .short _SD_Expunge      \n"
-"       .short _SD_ExtFunc      \n"
-"       .short _SD_BeginIO      \n"
-"       .short _SD_AbortIO      \n"
-"       .short -1               \n"
-);
-
 ULONG SD_Expunge(struct SDCardBase * SDCardBase asm("a6"))
 {
+    /* This is rom based device. no expunge here */
     if (SDCardBase->sd_Device.dd_Library.lib_OpenCnt > 0)
     {
         SDCardBase->sd_Device.dd_Library.lib_Flags |= LIBF_DELEXP;
@@ -78,17 +66,33 @@ APTR SD_ExtFunc(struct SDCardBase * SDCardBase asm("a6"))
     return SDCardBase;
 }
 
-void SD_Open(struct IORequest * io asm("a1"), LONG unitNumber asm("d0"),
-    ULONG flags asm("d1"), struct SDCardBase * SDCardBase asm("a6"))
+static void putch(UBYTE data asm("d0"), APTR ignore asm("a3"))
 {
-    (void)flags;
-    (void)unitNumber;
+    *(UBYTE*)0xdeadbeef = data;
+}
 
+void SD_Open(struct IORequest * io asm("a1"), LONG unitNumber asm("d0"),
+    ULONG flags asm("d1"))
+{
+    struct SDCardBase *SDCardBase = (struct SDCardBase *)io->io_Device;
+    struct ExecBase *SysBase = SDCardBase->sd_SysBase;
+    (void)flags;
+
+#if 0
+    {
+        ULONG args[] = {
+            (ULONG)io, unitNumber, flags
+        };
+        RawDoFmt("[brcm-sdhc] Open(%08lx, %lx, %ld)\n", args, (APTR)putch, NULL);
+    }
+#endif
+
+    io->io_Error = 0;
+
+    /* Do not continue if unit number does not fit */
     if (unitNumber >= SDCardBase->sd_UnitCount) {
         io->io_Error = IOERR_OPENFAIL;
     }
-
-    
 
     /* 
         Do whatever necessary to open given unit number with flags, set NT_REPLYMSG if 
@@ -97,9 +101,18 @@ void SD_Open(struct IORequest * io asm("a1"), LONG unitNumber asm("d0"),
 
     if (io->io_Error == 0)
     {
+        /* Get unit based on unit number */
+        struct SDCardUnit *u = SDCardBase->sd_Units[unitNumber];
+
+        /* Increase open counter of the unit */
+        u->su_Unit.unit_OpenCnt++;
+      
+        /* Increase global open coutner of the device */
         SDCardBase->sd_Device.dd_Library.lib_OpenCnt++;
         SDCardBase->sd_Device.dd_Library.lib_Flags &= ~LIBF_DELEXP;
 
+        io->io_Unit = &u->su_Unit;
+        io->io_Unit->unit_flags |= UNITF_ACTIVE;
         io->io_Message.mn_Node.ln_Type = NT_REPLYMSG;
     }
     else
@@ -111,10 +124,12 @@ void SD_Open(struct IORequest * io asm("a1"), LONG unitNumber asm("d0"),
     return;
 }
 
-ULONG SD_Close(struct IORequest * io asm("a1"), struct SDCardBase * SDCardBase asm("a6"))
+ULONG SD_Close(struct IORequest * io asm("a1"))
 {
-    (void)io;
+    struct SDCardBase *SDCardBase = (struct SDCardBase *)io->io_Device;
+    struct SDCardUnit *u = (struct SDCardUnit *)io->io_Unit;
 
+    u->su_Unit.unit_OpenCnt--;
     SDCardBase->sd_Device.dd_Library.lib_OpenCnt--;
 
     if (SDCardBase->sd_Device.dd_Library.lib_OpenCnt == 0)
@@ -155,10 +170,8 @@ CONST_APTR GetPropValueRecursive(APTR key, CONST_STRPTR property, APTR DeviceTre
     return NULL;
 }
 
-static void putch(UBYTE data asm("d0"), APTR ignore asm("a3"))
-{
-    *(UBYTE*)0xdeadbeef = data;
-}
+void SD_BeginIO(struct IORequest *io asm("a1"));
+LONG SD_AbortIO(struct IORequest *io asm("a1"));
 
 void delay(ULONG us, struct SDCardBase *SDCardBase)
 {
@@ -170,8 +183,6 @@ void delay(ULONG us, struct SDCardBase *SDCardBase)
 
     DoIO((struct IORequest *)&SDCardBase->sd_TimeReq);
 }
-
-
 
 APTR Init(struct ExecBase *SysBase asm("a6"))
 {
@@ -196,9 +207,20 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
         if (base_pointer != NULL)
         {
             APTR key;
+            ULONG relFuncTable[] = {
+                (ULONG)SD_Open + (ULONG)binding.cb_ConfigDev->cd_BoardAddr,
+                (ULONG)SD_Close + (ULONG)binding.cb_ConfigDev->cd_BoardAddr,
+                (ULONG)SD_Expunge + (ULONG)binding.cb_ConfigDev->cd_BoardAddr,
+                (ULONG)SD_ExtFunc + (ULONG)binding.cb_ConfigDev->cd_BoardAddr,
+                (ULONG)SD_BeginIO + (ULONG)binding.cb_ConfigDev->cd_BoardAddr,
+                (ULONG)SD_AbortIO + (ULONG)binding.cb_ConfigDev->cd_BoardAddr,
+                -1
+            };
             
             SDCardBase = (struct SDCardBase *)((UBYTE *)base_pointer + BASE_NEG_SIZE);
-            MakeFunctions(SDCardBase, relFuncTable, (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+            MakeFunctions(SDCardBase, relFuncTable, 0);
+
+            SDCardBase->sd_ROMBase = binding.cb_ConfigDev->cd_BoardAddr;
 
             SDCardBase->sd_RequestBase = AllocMem(256*4, MEMF_FAST);
             SDCardBase->sd_Request = (ULONG *)(((intptr_t)SDCardBase->sd_RequestBase + 127) & ~127);
@@ -223,6 +245,10 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
 
             SDCardBase->sd_TimeReq.tr_node.io_Message.mn_ReplyPort = &SDCardBase->sd_Port;
             OpenDevice("timer.device", UNIT_MICROHZ, (struct IORequest *)&SDCardBase->sd_TimeReq, 0);
+
+            SDCardBase->sd_DoIO = (APTR)((ULONG)int_do_io + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+            extern const UWORD NSDSupported[];
+            SDCardBase->sd_NSDSupported = (APTR)((ULONG)NSDSupported + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
 
             /* Set MBOX functions in device base */
             SDCardBase->get_clock_rate = (APTR)((ULONG)get_clock_rate + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
@@ -425,28 +451,29 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                     /* Initialization is complete. Create all tasks for the units now */
                     for (int unit = 0; unit < SDCardBase->sd_UnitCount; unit++)
                     {
-                        APTR entry = UnitTask;
+                        APTR entry = (APTR)((ULONG)UnitTask + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);;
                         struct Task *task = AllocMem(sizeof(struct Task), MEMF_PUBLIC | MEMF_CLEAR);
                         struct MemList *ml = AllocMem(sizeof(struct MemList) + 2*sizeof(struct MemEntry), MEMF_PUBLIC | MEMF_CLEAR);
-                        ULONG *stack = AllocMem(1024 * sizeof(ULONG), MEMF_PUBLIC | MEMF_CLEAR);
-                        STRPTR unit_name_copy = AllocMem(20, MEMF_PUBLIC | MEMF_CLEAR);
-                        CopyMem("brcm-sdhc unit 0", unit_name_copy, 20);
+                        ULONG *stack = AllocMem(UNIT_TASK_STACKSIZE * sizeof(ULONG), MEMF_PUBLIC | MEMF_CLEAR);
+                        const char unit_name[] = "brcm-sdhc unit 0";
+                        STRPTR unit_name_copy = AllocMem(sizeof(unit_name), MEMF_PUBLIC | MEMF_CLEAR);
+                        CopyMem(unit_name, unit_name_copy, sizeof(unit_name));
 
                         ml->ml_NumEntries = 3;
                         ml->ml_ME[0].me_Un.meu_Addr = task;
                         ml->ml_ME[0].me_Length = sizeof(struct Task);
 
                         ml->ml_ME[1].me_Un.meu_Addr = &stack[0];
-                        ml->ml_ME[1].me_Length = 4096;
+                        ml->ml_ME[1].me_Length = UNIT_TASK_STACKSIZE * sizeof(ULONG);
 
                         ml->ml_ME[2].me_Un.meu_Addr = unit_name_copy;
-                        ml->ml_ME[2].me_Length = 20;
+                        ml->ml_ME[2].me_Length = sizeof(unit_name);
 
-                        unit_name_copy[15] += unit;
+                        unit_name_copy[sizeof(unit_name) - 2] += unit;
 
                         task->tc_UserData = SDCardBase->sd_Units[unit];
                         task->tc_SPLower = &stack[0];
-                        task->tc_SPUpper = &stack[1023];
+                        task->tc_SPUpper = &stack[UNIT_TASK_STACKSIZE];
                         task->tc_SPReg = task->tc_SPUpper;
 
                         task->tc_Node.ln_Name = unit_name_copy;
@@ -455,8 +482,6 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
 
                         NewList(&task->tc_MemEntry);
                         AddHead(&task->tc_MemEntry, &ml->ml_Node);
-
-                        entry = (APTR)((ULONG)entry + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
 
                         AddTask(task, entry, NULL);
                     }

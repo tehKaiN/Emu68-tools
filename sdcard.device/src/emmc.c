@@ -96,10 +96,12 @@ void cmd_int(ULONG cmd, ULONG arg, ULONG timeout, struct SDCardBase *SDCardBase)
     // Set argument 1 reg
     wr32(SDCardBase->sd_SDHC, EMMC_ARG1, arg);
 
+#if 0
     {
         ULONG args[] = {cmd, arg};
         RawDoFmt("[brcm-sdhc] sending command %08lx, arg %08lx\n", args, (APTR)putch, NULL);
     }
+#endif
 
     // Set command reg
     wr32(SDCardBase->sd_SDHC, EMMC_CMDTM, cmd);
@@ -736,6 +738,11 @@ int sd_card_init(struct SDCardBase *SDCardBase)
 	ret->bd.device_id = (uint8_t *)dev_id;
 	ret->bd.dev_id_len = 4 * sizeof(uint32_t);
 #endif
+
+    SDCardBase->sd_CID[0] = card_cid_3;
+    SDCardBase->sd_CID[1] = card_cid_2;
+    SDCardBase->sd_CID[2] = card_cid_1;
+    SDCardBase->sd_CID[3] = card_cid_0;
 
 	// Send CMD3 to enter the data state
 	SDCardBase->sd_CMD(SEND_RELATIVE_ADDR, 0, 500000, SDCardBase);

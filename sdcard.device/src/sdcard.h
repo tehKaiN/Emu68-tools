@@ -33,6 +33,7 @@ struct SDCardUnit;
 struct SDCardBase {
     struct Device       sd_Device;
     struct ExecBase *   sd_SysBase;
+    APTR                sd_ROMBase;
     APTR                sd_DeviceTreeBase;
     APTR                sd_MailBox;
     APTR                sd_SDHC;
@@ -46,6 +47,9 @@ struct SDCardBase {
     struct SignalSemaphore sd_Lock;
     struct TimeRequest  sd_TimeReq;
     struct MsgPort      sd_Port;
+
+    void              (*sd_DoIO)(struct IORequest *io, struct SDCardBase * SDCardBase);
+    UWORD *             sd_NSDSupported;
 
     /* MBox functions */
     uint32_t          (*get_clock_rate)(uint32_t clock_id, struct SDCardBase * SDCardBase);
@@ -78,6 +82,8 @@ struct SDCardBase {
     ULONG               sd_Res2;
     ULONG               sd_Res3;
 
+    ULONG               sd_CID[4];
+
     ULONG               sd_Capabilities0;
     ULONG               sd_Capabilities1;
     ULONG               sd_LastCMD;
@@ -106,6 +112,7 @@ void UnitTask();
 #define SDCARD_PRIORITY 20
 
 #define UNIT_TASK_PRIORITY  10
+#define UNIT_TASK_STACKSIZE 1024
 
 #define BASE_NEG_SIZE   (6 * 6)
 #define BASE_POS_SIZE   (sizeof(struct SDCardBase))
@@ -116,6 +123,7 @@ uint32_t get_min_clock_rate(uint32_t clock_id, struct SDCardBase * SDCardBase);
 uint32_t set_clock_rate(uint32_t clock_id, uint32_t speed, struct SDCardBase * SDCardBase);
 uint32_t get_power_state(uint32_t id, struct SDCardBase * SDCardBase);
 uint32_t set_power_state(uint32_t id, uint32_t state, struct SDCardBase * SDCardBase);
+void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase);
 
 #define	EMMC_ARG2		0
 #define EMMC_BLKSIZECNT		4
