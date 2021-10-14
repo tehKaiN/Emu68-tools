@@ -25,6 +25,15 @@ void UnitTask()
     unit->su_Unit.unit_MsgPort.mp_Flags = PA_SIGNAL;
     unit->su_Unit.unit_MsgPort.mp_Node.ln_Type = NT_MSGPORT;
 
-    while(1)
+    while(1) {
+        struct IORequest *io;
         WaitPort(&unit->su_Unit.unit_MsgPort);
+        while(io = (struct IORequest *)GetMsg(&unit->su_Unit.unit_MsgPort))
+        {
+            SDCardBase->sd_DoIO(io, SDCardBase);
+            io->io_Message.mn_Node.ln_Type = NT_MESSAGE;
+            ReplyMsg(&io->io_Message);
+        }
+    }
+        
 }
