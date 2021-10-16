@@ -220,6 +220,7 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
             SDCardBase = (struct SDCardBase *)((UBYTE *)base_pointer + BASE_NEG_SIZE);
             MakeFunctions(SDCardBase, relFuncTable, 0);
 
+            SDCardBase->sd_ConfigDev = binding.cb_ConfigDev;
             SDCardBase->sd_ROMBase = binding.cb_ConfigDev->cd_BoardAddr;
 
             SDCardBase->sd_RequestBase = AllocMem(256*4, MEMF_FAST);

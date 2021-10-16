@@ -41,6 +41,8 @@ struct SDCardBase {
     APTR                sd_RequestBase;
     ULONG               sd_SDHCClock;
 
+    struct ConfigDev *  sd_ConfigDev;
+
     struct SDCardUnit * sd_Units[5];    /* 5 units at most for the case where SDCard has 4 primary partitions type 0x76 */
     UWORD               sd_UnitCount;
 
