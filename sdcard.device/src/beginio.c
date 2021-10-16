@@ -32,6 +32,7 @@ static const ULONG quick =
     (1 << TD_CHANGENUM)     |
     (1 << TD_GETDRIVETYPE)  |
     (1 << TD_GETGEOMETRY)   |
+    (1 << TD_CHANGESTATE)   |
     (1 << TD_PROTSTATUS);
 
 const UWORD NSDSupported[] = {
@@ -44,6 +45,7 @@ const UWORD NSDSupported[] = {
         TD_GETDRIVETYPE,
         TD_GETGEOMETRY,
         TD_PROTSTATUS,
+        TD_CHANGESTATE,
         TD_READ64,
         TD_WRITE64,
         NSCMD_DEVICEQUERY,
@@ -325,6 +327,10 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase)
             }
             break;
 
+        case TD_CHANGESTATE:
+            iostd->io_Actual = 0;
+            break;
+
         case TD_PROTSTATUS:
             iostd->io_Actual = 0;
             break;
@@ -504,6 +510,7 @@ void SD_BeginIO(struct IORequest *io asm("a1"))
             case TD_GETDRIVETYPE:   /* Fallthrough */
             case TD_GETNUMTRACKS:   /* Fallthrough */
             case TD_GETGEOMETRY:    /* Fallthrough */
+            case TD_CHANGESTATE:    /* Fallthrough */
             case TD_PROTSTATUS:
                 SDCardBase->sd_DoIO(io, SDCardBase);
                 break;
