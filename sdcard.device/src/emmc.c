@@ -71,7 +71,7 @@ void cmd_int(ULONG cmd, ULONG arg, ULONG timeout, struct SDCardBase *SDCardBase)
 
     // Check Command Inhibit
     while(rd32(SDCardBase->sd_SDHC, EMMC_STATUS) & 0x1)
-        SDCardBase->sd_Delay(1000, SDCardBase);
+        SDCardBase->sd_Delay(10, SDCardBase);
 
     // Is the command with busy?
     if((cmd & SD_CMD_RSPNS_TYPE_MASK) == SD_CMD_RSPNS_TYPE_48B)
@@ -85,7 +85,7 @@ void cmd_int(ULONG cmd, ULONG arg, ULONG timeout, struct SDCardBase *SDCardBase)
 
             // Wait for the data line to be free
             while(rd32(SDCardBase->sd_SDHC, EMMC_STATUS) & 0x2)
-                SDCardBase->sd_Delay(1000, SDCardBase);
+                SDCardBase->sd_Delay(10, SDCardBase);
         }
     }
 
@@ -106,7 +106,8 @@ void cmd_int(ULONG cmd, ULONG arg, ULONG timeout, struct SDCardBase *SDCardBase)
     // Set command reg
     wr32(SDCardBase->sd_SDHC, EMMC_CMDTM, cmd);
 
-    SDCardBase->sd_Delay(2000, SDCardBase);
+asm volatile("nop");
+    //SDCardBase->sd_Delay(10, SDCardBase);
 
     // Wait for command complete interrupt
     TIMEOUT_WAIT((rd32(SDCardBase->sd_SDHC, EMMC_INTERRUPT) & 0x8001), timeout);
@@ -118,14 +119,15 @@ void cmd_int(ULONG cmd, ULONG arg, ULONG timeout, struct SDCardBase *SDCardBase)
     // Test for errors
     if((irpts & 0xffff0001) != 0x1)
     {
-        RawDoFmt("[brcm-sdhc] error occured whilst waiting for command complete interrupt\n", NULL, (APTR)putch, NULL);
+        RawDoFmt("[brcm-sdhc] error occured whilst waiting for command complete interrupt (%08lx)\n", &irpts, (APTR)putch, NULL);
 
         SDCardBase->sd_LastError = irpts & 0xffff0000;
         SDCardBase->sd_LastInterrupt = irpts;
         return;
     }
 
-    SDCardBase->sd_Delay(2000, SDCardBase);
+//    SDCardBase->sd_Delay(10, SDCardBase);
+    asm volatile("nop");
 
     // Get response data
     switch(cmd & SD_CMD_RSPNS_TYPE_MASK)
@@ -166,7 +168,7 @@ void cmd_int(ULONG cmd, ULONG arg, ULONG timeout, struct SDCardBase *SDCardBase)
 
             if((irpts & (0xffff0000 | wr_irpt)) != wr_irpt)
             {
-                RawDoFmt("[brcm-sdhc] error occured whilst waiting for data ready interrupt\n", NULL, (APTR)putch, NULL);
+                RawDoFmt("[brcm-sdhc] error occured whilst waiting for data ready interrupt (%08lx)\n", &irpts, (APTR)putch, NULL);
 
                 SDCardBase->sd_LastError = irpts & 0xffff0000;
                 SDCardBase->sd_LastInterrupt = irpts;
@@ -211,7 +213,7 @@ void cmd_int(ULONG cmd, ULONG arg, ULONG timeout, struct SDCardBase *SDCardBase)
             //  are set - transfer complete overrides data timeout: HCSS 2.2.17
             if(((irpts & 0xffff0002) != 0x2) && ((irpts & 0xffff0002) != 0x100002))
             {
-                RawDoFmt("[brcm-sdhc] error occured whilst waiting for transfer complete interrupt\n", NULL, (APTR)putch, NULL);
+                RawDoFmt("[brcm-sdhc] error occured whilst waiting for transfer complete interrupt (%08lx)\n", &irpts, (APTR)putch, NULL);
                 SDCardBase->sd_LastError = irpts & 0xffff0000;
                 SDCardBase->sd_LastInterrupt = irpts;
                 return;
@@ -225,12 +227,12 @@ void cmd_int(ULONG cmd, ULONG arg, ULONG timeout, struct SDCardBase *SDCardBase)
 // Reset the CMD line
 static int sd_reset_cmd(struct SDCardBase *SDCardBase)
 {
-    int tout = 10000;
+    int tout = 1000000;
     uint32_t control1 = rd32(SDCardBase->sd_SDHC, EMMC_CONTROL1);
 	control1 |= SD_RESET_CMD;
 	wr32(SDCardBase->sd_SDHC, EMMC_CONTROL1, control1);
 	while (tout && (rd32(SDCardBase->sd_SDHC, EMMC_CONTROL1) & SD_RESET_CMD) != 0) {
-        SDCardBase->sd_Delay(100, SDCardBase);
+        SDCardBase->sd_Delay(1, SDCardBase);
         tout--;
     }
 	if((rd32(SDCardBase->sd_SDHC, EMMC_CONTROL1) & SD_RESET_CMD) != 0)
@@ -243,12 +245,12 @@ static int sd_reset_cmd(struct SDCardBase *SDCardBase)
 // Reset the CMD line
 static int sd_reset_dat(struct SDCardBase *SDCardBase)
 {
-    int tout = 10000;
+    int tout = 1000000;
     uint32_t control1 = rd32(SDCardBase->sd_SDHC, EMMC_CONTROL1);
 	control1 |= SD_RESET_DAT;
 	wr32(SDCardBase->sd_SDHC, EMMC_CONTROL1, control1);
 	while (tout && (rd32(SDCardBase->sd_SDHC, EMMC_CONTROL1) & SD_RESET_DAT) != 0) {
-        SDCardBase->sd_Delay(100, SDCardBase);
+        SDCardBase->sd_Delay(1, SDCardBase);
         tout--;
     }
 	if((rd32(SDCardBase->sd_SDHC, EMMC_CONTROL1) & SD_RESET_DAT) != 0)

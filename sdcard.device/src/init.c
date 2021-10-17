@@ -175,6 +175,14 @@ LONG SD_AbortIO(struct IORequest *io asm("a1"));
 
 void delay(ULONG us, struct SDCardBase *SDCardBase)
 {
+    ULONG timer = LE32(*(volatile ULONG*)0xf2003004);
+    ULONG end = timer + us;
+
+    if (end < timer) {
+        while (end < LE32(*(volatile ULONG*)0xf2003004)) asm volatile("nop");
+    }
+    while (end > LE32(*(volatile ULONG*)0xf2003004)) asm volatile("nop");
+#if 0
     struct ExecBase *SysBase = SDCardBase->sd_SysBase;
     SDCardBase->sd_Port.mp_SigTask = FindTask(NULL);
     SDCardBase->sd_TimeReq.tr_time.tv_micro = us % 1000000;
@@ -182,6 +190,7 @@ void delay(ULONG us, struct SDCardBase *SDCardBase)
     SDCardBase->sd_TimeReq.tr_node.io_Command = TR_ADDREQUEST;
 
     DoIO((struct IORequest *)&SDCardBase->sd_TimeReq);
+#endif
 }
 
 APTR Init(struct ExecBase *SysBase asm("a6"))

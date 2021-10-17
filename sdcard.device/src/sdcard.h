@@ -386,7 +386,7 @@ static inline void wr32be(APTR addr, ULONG offset, ULONG val)
 }
 
 #define TIMEOUT_WAIT(check_func, tout) \
-    do { ULONG cnt = (tout) / 100; if (cnt == 0) cnt = 1; while(cnt != 0) { if (check_func) break; \
-    cnt = cnt - 1; SDCardBase->sd_Delay(100, SDCardBase); }  } while(0)
+    do { ULONG cnt = (tout) / 2; if (cnt == 0) cnt = 1; while(cnt != 0) { if (check_func) break; \
+    cnt = cnt - 1; SDCardBase->sd_Delay(2, SDCardBase); }  } while(0)
 
 #endif /* _SDCARD_H */
