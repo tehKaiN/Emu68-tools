@@ -22,7 +22,8 @@
 
 #include "sdcard.h"
 
-
+#define HEAD_COUNT      128
+#define SECTOR_COUNT    64
 
 static void putch(UBYTE data asm("d0"), APTR ignore asm("a3"))
 {
@@ -34,6 +35,9 @@ static const ULONG quick =
     (1 << TD_GETDRIVETYPE)  |
     (1 << TD_GETGEOMETRY)   |
     (1 << TD_CHANGESTATE)   |
+    (1 << TD_ADDCHANGEINT)  |
+    (1 << TD_REMCHANGEINT)  |
+    (1 << TD_MOTOR)         |
     (1 << TD_PROTSTATUS);
 
 const UWORD NSDSupported[] = {
@@ -46,8 +50,11 @@ const UWORD NSDSupported[] = {
         TD_GETDRIVETYPE,
         TD_GETGEOMETRY,
         TD_PROTSTATUS,
+        TD_ADDCHANGEINT,
+        TD_REMCHANGEINT,
         TD_CHANGESTATE,
         TD_READ64,
+        TD_MOTOR,
         TD_WRITE64,
         NSCMD_DEVICEQUERY,
         NSCMD_TD_READ64,
@@ -277,11 +284,11 @@ void int_handle_scsi(struct IOStdReq *io, struct SDCardBase * SDCardBase)
                 case 0x0300: // Format Device Mode
                     data[12] = 0x03;  // PAGE CODE
                     data[13] = 0x16;  // PAGE_LENGTH
-                    data[14] = 0;     // TRACKS PER ZONE 15..8
-                    data[15] = 16;    // TRACKS PER ZONE 7..0
+                    data[14] = HEAD_COUNT >> 8;     // TRACKS PER ZONE 15..8
+                    data[15] = HEAD_COUNT;    // TRACKS PER ZONE 7..0
                     
-                    data[22] = 0;     // SECTORS PER TRACK 15..8
-                    data[23] = 64;    // SECTORS PER TRACK 7..0
+                    data[22] = SECTOR_COUNT >> 8;     // SECTORS PER TRACK 15..8
+                    data[23] = SECTOR_COUNT;    // SECTORS PER TRACK 7..0
                     data[24] = (unit->su_Base->sd_BlockSize >> 8) & 0xff;
                     data[25] = (unit->su_Base->sd_BlockSize) & 0xff;
 
@@ -293,10 +300,10 @@ void int_handle_scsi(struct IOStdReq *io, struct SDCardBase * SDCardBase)
                 case 0x0400: // Rigid Drive Geometry
                     data[12] = 0x04;  // PAGE CODE
                     data[13] = 0x16;  // PAGE LENGTH
-                    data[14] = (unit->su_BlockCount / (64*16)) >> 16;
-                    data[15] = (unit->su_BlockCount / (64*16)) >> 8;
-                    data[16] = (unit->su_BlockCount / (64*16));
-                    data[17] = 16;
+                    data[14] = (unit->su_BlockCount / (HEAD_COUNT * SECTOR_COUNT)) >> 16;
+                    data[15] = (unit->su_BlockCount / (HEAD_COUNT * SECTOR_COUNT)) >> 8;
+                    data[16] = (unit->su_BlockCount / (HEAD_COUNT * SECTOR_COUNT));
+                    data[17] = HEAD_COUNT;
 
                     cmd->scsi_Actual = cmd->scsi_Data[0] + 1;
                     io->io_Error = 0;
@@ -356,6 +363,14 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase)
             }
             break;
 
+        case TD_ADDCHANGEINT:
+            iostd->io_Actual = 0;
+            break;
+
+        case TD_REMCHANGEINT:
+            iostd->io_Actual = 0;
+            break;
+
         case TD_CHANGESTATE:
             iostd->io_Actual = 0;
             break;
@@ -365,7 +380,7 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase)
             break;
 
         case TD_CHANGENUM:
-            iostd->io_Actual = 1;
+            iostd->io_Actual = 0;
             break;
 
         case TD_GETDRIVETYPE:
@@ -384,10 +399,10 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase)
 
                 g->dg_SectorSize = SDCardBase->sd_BlockSize;
                 g->dg_TotalSectors = unit->su_BlockCount;
-                g->dg_TrackSectors = 64;
-                g->dg_Heads = 16;
-                g->dg_CylSectors = g->dg_TrackSectors * g->dg_Heads;
-                g->dg_Cylinders = g->dg_TotalSectors / g->dg_CylSectors;
+                g->dg_TrackSectors = SECTOR_COUNT;
+                g->dg_Heads = HEAD_COUNT;
+                g->dg_CylSectors = SECTOR_COUNT * HEAD_COUNT;
+                g->dg_Cylinders = g->dg_TotalSectors / (SECTOR_COUNT * HEAD_COUNT);
                 g->dg_BufMemType = MEMF_PUBLIC;
                 g->dg_DeviceType = DG_DIRECT_ACCESS;
                 g->dg_Flags = 0; /* Non-removable */
@@ -509,6 +524,7 @@ void SD_BeginIO(struct IORequest *io asm("a1"))
     struct SDCardBase *SDCardBase = (struct SDCardBase *)io->io_Device;
     struct ExecBase *SysBase = SDCardBase->sd_SysBase;
     struct SDCardUnit *unit = (struct SDCardUnit *)io->io_Unit;
+    struct IOStdReq *std = (struct IOStdReq *)io;
 
     io->io_Error = 0;
     io->io_Message.mn_Node.ln_Type = NT_MESSAGE;
@@ -519,9 +535,12 @@ void SD_BeginIO(struct IORequest *io asm("a1"))
             (ULONG)unit->su_UnitNum,
             (ULONG)io->io_Unit,
             (ULONG)io->io_Command,
+            (ULONG)std->io_Length,
+            (ULONG)std->io_Actual,
+            (ULONG)std->io_Offset,
         };
 
-        RawDoFmt("[brcm-sdhc:%ld] BeginIO Unit=%08lx, cmd=%ld\n", args, (APTR)putch, NULL);
+        RawDoFmt("[brcm-sdhc:%ld] BeginIO Unit=%08lx, cmd=%ld, length=%ld, actual=%08lx, offset=%08lx\n", args, (APTR)putch, NULL);
     }
 #endif
 
@@ -540,6 +559,9 @@ void SD_BeginIO(struct IORequest *io asm("a1"))
             case TD_GETNUMTRACKS:   /* Fallthrough */
             case TD_GETGEOMETRY:    /* Fallthrough */
             case TD_CHANGESTATE:    /* Fallthrough */
+            case TD_ADDCHANGEINT:   /* Fallthrough */
+            case TD_REMCHANGEINT:   /* Fallthrough */
+            case TD_MOTOR:          /* Fallthrough */
             case TD_PROTSTATUS:
                 SDCardBase->sd_DoIO(io, SDCardBase);
                 break;
