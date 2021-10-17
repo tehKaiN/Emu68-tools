@@ -987,7 +987,7 @@ static int sd_ensure_data_mode(struct SDCardBase *SDCardBase)
 		status = SDCardBase->sd_Res0;
 		cur_state = (status >> 9) & 0xf;
 
-		RawDoFmt("%i\n", &cur_state, (APTR)putch, NULL);
+		RawDoFmt("%ld\n", &cur_state, (APTR)putch, NULL);
 
 		if(cur_state != 4)
 		{
