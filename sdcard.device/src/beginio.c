@@ -59,14 +59,24 @@ static CONST_STRPTR const ManuID[] = {
     [0x01] = "Panasoni",
     [0x02] = "Toshiba ",
     [0x03] = "SanDisk ",
+    [0x08] = "SiliconP",
+    [0x18] = "Infineon",
     [0x1b] = "Samsung ",
+    [0x1c] = "Transcnd",
     [0x1d] = "AData   ",
+    [0x1e] = "Transcnd",
+    [0x1f] = "Kingston",
     [0x27] = "Phison  ",
     [0x28] = "Lexar   ",
+    [0x30] = "SanDisk ",
     [0x31] = "SiliconP",
+    [0x41] = "Kingston",
+    [0x33] = "STMicro ",
+    [0x6f] = "STMicro ",
     [0x74] = "Transcnd",
     [0x76] = "Patriot ",
     [0x82] = "Sony    ",
+    [0x89] = "Unknown ",
 };
 
 #define MANU_ID_LEN (sizeof(ManuID) / sizeof(ManuID[0]))
@@ -191,6 +201,11 @@ void int_handle_scsi(struct IOStdReq *io, struct SDCardBase * SDCardBase)
             cmd->scsi_Actual = cmd->scsi_Length;
             io->io_Error = 0;
             break;
+
+        // Read (6)
+        // Write (6)
+        // Read (10)
+        // Write (10)
 
         case 0x25: // READ_CAPACITY (10)
             if (cmd->scsi_CmdLength < 10)
