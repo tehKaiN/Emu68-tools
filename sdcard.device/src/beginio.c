@@ -23,6 +23,7 @@
 #include "sdcard.h"
 
 
+
 static void putch(UBYTE data asm("d0"), APTR ignore asm("a3"))
 {
     *(UBYTE*)0xdeadbeef = data;
@@ -54,6 +55,8 @@ const UWORD NSDSupported[] = {
         HD_SCSICMD,
         0
     };
+
+static CONST_STRPTR const ASCII_Table = "0123456789ABCDEF";
 
 static CONST_STRPTR const ManuID[] = {
     [0x01] = "Panasoni",
@@ -90,6 +93,9 @@ void int_handle_scsi(struct IOStdReq *io, struct SDCardBase * SDCardBase)
     UBYTE *data = (UBYTE *)cmd->scsi_Data;
     UBYTE *tmp1;
     UBYTE tmp2;
+    UBYTE tmpbuf[8];
+    UBYTE *ASCII = (UBYTE*)((ULONG)ASCII_Table + (ULONG)SDCardBase->sd_ROMBase);
+
 #if 0
     {
         ULONG args[] = {
@@ -137,11 +143,19 @@ void int_handle_scsi(struct IOStdReq *io, struct SDCardBase * SDCardBase)
                         {
                             tmp2 = (SDCardBase->sd_CID[0] >> 16) & 0xff;
                             UBYTE **id = (UBYTE**)((ULONG)ManuID + (ULONG)SDCardBase->sd_ROMBase);
-                            if (id[tmp2] != NULL) {
+                            if (tmp2 < MANU_ID_LEN && id[tmp2] != NULL) {
                                 tmp1 = (STRPTR)id[tmp2] + (ULONG)SDCardBase->sd_ROMBase;
                             }
                             else {
-                                tmp1 = "????    ";
+                                tmpbuf[0] = 'n';
+                                tmpbuf[1] = '/';
+                                tmpbuf[2] = 'a';
+                                tmpbuf[3] = ' ';
+                                tmpbuf[4] = '(';
+                                tmpbuf[5] = ASCII[(tmp2 >> 4) & 0xf];
+                                tmpbuf[6] = ASCII[tmp2 & 0xf];
+                                tmpbuf[7] = ')';
+                                tmp1 = tmpbuf;
                             }
                         }
                         else if (i == 16) {
@@ -189,7 +203,7 @@ void int_handle_scsi(struct IOStdReq *io, struct SDCardBase * SDCardBase)
                         else if (i >= 36 && i < 44) {
                             if ((i & 1) == 0)
                                 val >>= 4;
-                            val = "0123456789ABCDEF"[val & 0xf];
+                            val = ASCII[val & 0xf];
                         } else
                             val = 0;
                         break;
