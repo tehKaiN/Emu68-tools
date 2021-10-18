@@ -93,14 +93,14 @@ static void MountPartitions(struct SDCardUnit *unit)
                     /* If NOMOUNT *is not* set, attempt to mount the partition */
                     if ((buff.part.pb_Flags & PBFF_NOMOUNT) == 0)
                     {
-                        ULONG paramPkt[24];
-                        UBYTE name[32];
+                        ULONG *paramPkt = AllocMem(24 * sizeof(ULONG), MEMF_PUBLIC);
+                        UBYTE *name = AllocMem(buff.part.pb_DriveName[0] + 5, MEMF_PUBLIC);
 
                 
                         for (int i=0; i < buff.part.pb_DriveName[0]; i++) {
                             name[i] = buff.part.pb_DriveName[1+i];
-                            name[i+1] = 0;
                         }
+                        name[buff.part.pb_DriveName[0]] = 0;
 
                         paramPkt[0] = (ULONG)name;
                         paramPkt[1] = (ULONG)SDCardBase->sd_Device.dd_Library.lib_Node.ln_Name;
@@ -144,6 +144,8 @@ void UnitTask()
     MountPartitions(unit);
 
     ReleaseSemaphore(&SDCardBase->sd_Lock);
+
+    Signal(unit->su_Caller, SIGBREAKF_CTRL_C);
 
     while(1) {
         struct IORequest *io;

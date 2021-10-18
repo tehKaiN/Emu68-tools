@@ -105,6 +105,7 @@ struct SDCardUnit {
     uint32_t            su_StartBlock;
     uint32_t            su_BlockCount;
     uint8_t             su_UnitNum;
+    struct Task *       su_Caller;
 };
 
 void UnitTask();

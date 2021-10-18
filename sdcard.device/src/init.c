@@ -493,7 +493,10 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                         NewList(&task->tc_MemEntry);
                         AddHead(&task->tc_MemEntry, &ml->ml_Node);
 
+                        SDCardBase->sd_Units[unit]->su_Caller = FindTask(NULL);
+
                         AddTask(task, entry, NULL);
+                        Wait(SIGBREAKF_CTRL_C);
                     }
 
                 }
