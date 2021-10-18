@@ -90,5 +90,8 @@ int DiagPoint(APTR boardBase asm("a0"), struct DiagArea *diagCopy asm("a2"), str
 
 void BootPoint()
 {
-
+    struct ExecBase *SysBase = *(struct ExecBase**)4UL;
+    struct Resident *DosResident = FindResident("dos.library");
+    void (*InitFunc)(struct Resident * asm("a0"), struct ExecBase * asm("a6")) = DosResident->rt_Init;
+    InitFunc(DosResident, SysBase);
 }
