@@ -6,3 +6,4 @@ get_verstring(VERSTRING)
 
 add_subdirectory(devicetree.resource)
 add_subdirectory(sdcard.device)
+add_subdirectory(68040.library)
