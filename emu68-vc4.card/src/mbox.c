@@ -210,3 +210,25 @@ void init_display(struct Size dimensions, void **framebuffer, uint32_t *pitch, s
     if (pitch)
         *pitch = _pitch;
 }
+
+int blank_screen(int blank, struct VC4Base *VC4Base)
+{
+    struct ExecBase *SysBase = VC4Base->vc4_SysBase;
+
+    ULONG *FBReq = VC4Base->vc4_Request;
+    ULONG len = 7*4;
+
+    FBReq[0] = LE32(4*7);
+    FBReq[1] = 0;
+    FBReq[2] = LE32(0x00040003);
+    FBReq[3] = LE32(4);
+    FBReq[4] = 0;
+    FBReq[5] = blank ? 1 : 0;
+    FBReq[6] = 0;
+
+    CacheClearE(FBReq, len, CACRF_ClearD);
+    mbox_send(8, (ULONG)FBReq, VC4Base);
+    mbox_recv(8, VC4Base);
+
+    return LE32(FBReq[5]) & 1;
+}

@@ -7,5 +7,6 @@
 void get_vc_memory(void **base, uint32_t *size, struct VC4Base * VC4Base);
 struct Size get_display_size(struct VC4Base * VC4Base);
 void init_display(struct Size dimensions, void **framebuffer, uint32_t *pitch, struct VC4Base * VC4Base);
+int blank_screen(int blank, struct VC4Base *VC4Base);
 
 #endif /* _MBOX_H */
