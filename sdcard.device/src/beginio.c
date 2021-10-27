@@ -53,9 +53,7 @@ const UWORD NSDSupported[] = {
         TD_ADDCHANGEINT,
         TD_REMCHANGEINT,
         TD_CHANGESTATE,
-        TD_READ64,
         TD_MOTOR,
-        TD_WRITE64,
         NSCMD_DEVICEQUERY,
         NSCMD_TD_READ64,
         NSCMD_TD_WRITE64,
@@ -87,6 +85,7 @@ static CONST_STRPTR const ManuID[] = {
     [0x76] = "Patriot ",
     [0x82] = "Sony    ",
     [0x89] = "Unknown ",
+    [0x9f] = "GoodRAM ",
 };
 
 #define MANU_ID_LEN (sizeof(ManuID) / sizeof(ManuID[0]))
@@ -438,8 +437,8 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase)
                 }
             }         
             break;
-        case NSCMD_TD_READ64: /* Fallthrough */
-        case TD_READ64:
+        
+        case NSCMD_TD_READ64:
             off64 = iostd->io_Offset;
             off64 |= ((unsigned long long)iostd->io_Actual) << 32;
             offset = off64 >> 9;
@@ -482,8 +481,8 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase)
                 }
             }         
             break;
-        case NSCMD_TD_WRITE64: /* Fallthrough */
-        case TD_WRITE64:
+
+        case NSCMD_TD_WRITE64:
             off64 = iostd->io_Offset;
             off64 |= ((unsigned long long)iostd->io_Actual) << 32;
             offset = off64 >> 9;
