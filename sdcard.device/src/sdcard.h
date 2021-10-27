@@ -21,9 +21,19 @@
 
 #include <stdint.h>
 
+struct sd_scr
+{
+    uint32_t    scr[2];
+    uint32_t    sd_bus_widths;
+    int         sd_version;
+};
+
+struct SDCardUnit;
+
 struct SDCardBase {
     struct Device       sd_Device;
     struct ExecBase *   sd_SysBase;
+    APTR                sd_ROMBase;
     APTR                sd_DeviceTreeBase;
     APTR                sd_MailBox;
     APTR                sd_SDHC;
@@ -31,17 +41,41 @@ struct SDCardBase {
     APTR                sd_RequestBase;
     ULONG               sd_SDHCClock;
 
+    struct ConfigDev *  sd_ConfigDev;
+
+    struct SDCardUnit * sd_Units[5];    /* 5 units at most for the case where SDCard has 4 primary partitions type 0x76 */
+    UWORD               sd_UnitCount;
+
     struct SignalSemaphore sd_Lock;
     struct TimeRequest  sd_TimeReq;
     struct MsgPort      sd_Port;
+
+    void              (*sd_DoIO)(struct IORequest *io, struct SDCardBase * SDCardBase);
+    UWORD *             sd_NSDSupported;
+
+    /* MBox functions */
+    uint32_t          (*get_clock_rate)(uint32_t clock_id, struct SDCardBase * SDCardBase);
+    uint32_t          (*set_clock_rate)(uint32_t clock_id, uint32_t speed, struct SDCardBase * SDCardBase);
+    uint32_t          (*get_clock_state)(uint32_t id, struct SDCardBase * SDCardBase);
+    uint32_t          (*set_clock_state)(uint32_t id, uint32_t state, struct SDCardBase * SDCardBase);
+    uint32_t          (*get_power_state)(uint32_t id, struct SDCardBase * SDCardBase);
+    uint32_t          (*set_power_state)(uint32_t id, uint32_t state, struct SDCardBase * SDCardBase);
+    uint32_t          (*set_led_state)(uint32_t id, uint32_t state, struct SDCardBase * SDCardBase);
 
     /* SD Card related functions */
     ULONG             (*sd_GetBaseClock)(struct SDCardBase *);
     int               (*sd_PowerCycle)(struct SDCardBase *);
     void              (*sd_SetLED)(int on, struct SDCardBase *);
     void              (*sd_Delay)(ULONG us, struct SDCardBase *);
+    int               (*sd_CMD_int)(ULONG cmd, ULONG arg, ULONG timeout, struct SDCardBase *);
     int               (*sd_CMD)(ULONG cmd, ULONG arg, ULONG timeout, struct SDCardBase *);
+    int               (*sd_CardInit)(struct SDCardBase *SDCardBase);
+    int               (*sd_Write)(uint8_t *buf, uint32_t buf_size, uint32_t block_no, struct SDCardBase *SDCardBase);
+    int               (*sd_Read)(uint8_t *buf, uint32_t buf_size, uint32_t block_no, struct SDCardBase *SDCardBase);
 
+    struct sd_scr       sd_SCR;
+
+    UWORD               sd_BlockSize;
     UWORD               sd_BlocksToTransfer;
     APTR                sd_Buffer;
 
@@ -49,6 +83,8 @@ struct SDCardBase {
     ULONG               sd_Res1;
     ULONG               sd_Res2;
     ULONG               sd_Res3;
+
+    ULONG               sd_CID[4];
 
     ULONG               sd_Capabilities0;
     ULONG               sd_Capabilities1;
@@ -64,14 +100,22 @@ struct SDCardBase {
 };
 
 struct SDCardUnit {
+    struct Unit         su_Unit;
     struct SDCardBase * su_Base;
-    uint64_t            su_LowAddr;
-    uint64_t            su_HighAddr;
+    uint32_t            su_StartBlock;
+    uint32_t            su_BlockCount;
+    uint8_t             su_UnitNum;
+    struct Task *       su_Caller;
 };
 
+void UnitTask();
+
 #define SDCARD_VERSION  0
-#define SDCARD_REVISION 1
+#define SDCARD_REVISION 5
 #define SDCARD_PRIORITY 20
+
+#define UNIT_TASK_PRIORITY  10
+#define UNIT_TASK_STACKSIZE 1024
 
 #define BASE_NEG_SIZE   (6 * 6)
 #define BASE_POS_SIZE   (sizeof(struct SDCardBase))
@@ -82,6 +126,7 @@ uint32_t get_min_clock_rate(uint32_t clock_id, struct SDCardBase * SDCardBase);
 uint32_t set_clock_rate(uint32_t clock_id, uint32_t speed, struct SDCardBase * SDCardBase);
 uint32_t get_power_state(uint32_t id, struct SDCardBase * SDCardBase);
 uint32_t set_power_state(uint32_t id, uint32_t state, struct SDCardBase * SDCardBase);
+void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase);
 
 #define	EMMC_ARG2		0
 #define EMMC_BLKSIZECNT		4
@@ -231,6 +276,7 @@ uint32_t set_power_state(uint32_t id, uint32_t state, struct SDCardBase * SDCard
 #define CMD_5               (SD_CMD_INDEX(5) | SD_RESP_R4)
 #define CMD_6               (SD_CMD_INDEX(6) | SD_RESP_R1)
 #define CMD_7               (SD_CMD_INDEX(7) | SD_RESP_R1b)
+#define CMD_7nr             (SD_CMD_INDEX(7))
 #define CMD_8               (SD_CMD_INDEX(8) | SD_RESP_R7)
 #define CMD_9               (SD_CMD_INDEX(9) | SD_RESP_R2)
 #define CMD_10              (SD_CMD_INDEX(10) | SD_RESP_R2)
@@ -241,12 +287,12 @@ uint32_t set_power_state(uint32_t id, uint32_t state, struct SDCardBase * SDCard
 #define CMD_15              (SD_CMD_INDEX(15))
 #define CMD_16              (SD_CMD_INDEX(16) | SD_RESP_R1)
 #define CMD_17              (SD_CMD_INDEX(17) | SD_RESP_R1 | SD_DATA_READ)
-#define CMD_18              (SD_CMD_INDEX(18) | SD_RESP_R1 | SD_DATA_READ | SD_CMD_MULTI_BLOCK | SD_CMD_BLKCNT_EN)
+#define CMD_18              (SD_CMD_INDEX(18) | SD_RESP_R1 | SD_DATA_READ | SD_CMD_MULTI_BLOCK | SD_CMD_BLKCNT_EN | SD_CMD_AUTO_CMD_EN_CMD12)
 #define CMD_19              (SD_CMD_INDEX(19) | SD_RESP_R1 | SD_DATA_READ)
 #define CMD_20              (SD_CMD_INDEX(20) | SD_RESP_R1b)
 #define CMD_23              (SD_CMD_INDEX(23) | SD_RESP_R1)
 #define CMD_24              (SD_CMD_INDEX(24) | SD_RESP_R1 | SD_DATA_WRITE)
-#define CMD_25              (SD_CMD_INDEX(25) | SD_RESP_R1 | SD_DATA_WRITE | SD_CMD_MULTI_BLOCK | SD_CMD_BLKCNT_EN)
+#define CMD_25              (SD_CMD_INDEX(25) | SD_RESP_R1 | SD_DATA_WRITE | SD_CMD_MULTI_BLOCK | SD_CMD_BLKCNT_EN | SD_CMD_AUTO_CMD_EN_CMD12)
 #define CMD_27              (SD_CMD_INDEX(27) | SD_RESP_R1 | SD_DATA_WRITE)
 #define CMD_28              (SD_CMD_INDEX(28) | SD_RESP_R1b)
 #define CMD_29              (SD_CMD_INDEX(29) | SD_RESP_R1b)
@@ -265,7 +311,7 @@ uint32_t set_power_state(uint32_t id, uint32_t state, struct SDCardBase * SDCard
 #define IO_SET_OP_COND          CMD_5
 #define SWITCH_FUNC             CMD_6
 #define SELECT_CARD             CMD_7
-#define DESELECT_CARD           CMD_7
+#define DESELECT_CARD           CMD_7nr
 #define SELECT_DESELECT_CARD    CMD_7
 #define SEND_IF_COND            CMD_8
 #define SEND_CSD                CMD_9
@@ -293,9 +339,55 @@ uint32_t set_power_state(uint32_t id, uint32_t state, struct SDCardBase * SDCard
 #define APP_CMD                 CMD_55
 #define GEN_CMD                 CMD_56
 
+#define SD_VER_UNKNOWN      0
+#define SD_VER_1            1
+#define SD_VER_1_1          2
+#define SD_VER_2            3
+#define SD_VER_3            4
+#define SD_VER_4            5
 
 #define SD_RESET_CMD            (1 << 25)
 #define SD_RESET_DAT            (1 << 26)
 #define SD_RESET_ALL            (1 << 24)
+
+/* Endian support */
+
+static inline uint64_t LE64(uint64_t x) { return __builtin_bswap64(x); }
+static inline uint32_t LE32(uint32_t x) { return __builtin_bswap32(x); }
+static inline uint16_t LE16(uint16_t x) { return __builtin_bswap16(x); }
+
+static inline ULONG rd32(APTR addr, ULONG offset)
+{
+    APTR addr_off = (APTR)((ULONG)addr + offset);
+    ULONG val = LE32(*(volatile ULONG *)addr_off);
+    asm volatile("nop");
+    return val;
+}
+
+static inline void wr32(APTR addr, ULONG offset, ULONG val)
+{
+    APTR addr_off = (APTR)((ULONG)addr + offset);
+    *(volatile ULONG *)addr_off = LE32(val);
+    asm volatile("nop");
+}
+
+static inline ULONG rd32be(APTR addr, ULONG offset)
+{
+    APTR addr_off = (APTR)((ULONG)addr + offset);
+    ULONG val = *(volatile ULONG *)addr_off;
+    asm volatile("nop");
+    return val;
+}
+
+static inline void wr32be(APTR addr, ULONG offset, ULONG val)
+{
+    APTR addr_off = (APTR)((ULONG)addr + offset);
+    *(volatile ULONG *)addr_off = val;
+    asm volatile("nop");
+}
+
+#define TIMEOUT_WAIT(check_func, tout) \
+    do { ULONG cnt = (tout) / 2; if (cnt == 0) cnt = 1; while(cnt != 0) { if (check_func) break; \
+    cnt = cnt - 1; SDCardBase->sd_Delay(2, SDCardBase); }  } while(0)
 
 #endif /* _SDCARD_H */

@@ -18,10 +18,16 @@
 
 #include "sdcard.h"
 
-LONG SD_AbortIO(struct IORequest *io asm("a1"), struct SDCardBase * SDCardBase asm("a6"))
+LONG SD_AbortIO(struct IORequest *io asm("a1"))
 {
+    struct SDCardBase *SDCardBase = (struct SDCardBase *)io->io_Device;
+    struct ExecBase *SysBase = SDCardBase->sd_SysBase;
+
     /* AbortIO is a *wish* call. Someone would like to abort current IORequest */
 
-    /* We cannot abort, sorry... */
+    Forbid();
+    io->io_Error = IOERR_ABORTED;
+    Permit();
+
     return 0;
 }
