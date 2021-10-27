@@ -1,0 +1,19 @@
+cmake_minimum_required(VERSION 3.14.0)
+project(68040 VERSION 1.2.0)
+get_verstring(VERSTRING)
+
+add_link_options(-ffreestanding -nostdlib -nostartfiles -Wl,-e_rom_start -Wl,-T${CMAKE_CURRENT_SOURCE_DIR}/ldscript.lds)
+add_compile_options(-Os -m68000 -fomit-frame-pointer)
+add_compile_definitions(PRIVATE VERSION_STRING="${VERSTRING}")
+
+add_executable(68040.library
+    src/main.c
+    src/init.c
+)
+
+add_custom_command(
+    TARGET 68040.library POST_BUILD
+    COMMAND ${CMAKE_OBJCOPY} -v -O binary "${CMAKE_CURRENT_BINARY_DIR}/68040.library" "${CMAKE_CURRENT_BINARY_DIR}/68040.bin"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+set_target_properties(68040.library PROPERTIES LINK_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/ldscript.lds)

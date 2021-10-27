@@ -39,6 +39,8 @@
 #include <exec/memory.h>
 #include <inline/alib.h>
 
+#include <devices/trackdisk.h>
+
 #include <proto/exec.h>
 #include <proto/expansion.h>
 #include <proto/devicetree.h>
@@ -91,7 +93,7 @@ void SD_Open(struct IORequest * io asm("a1"), LONG unitNumber asm("d0"),
 
     /* Do not continue if unit number does not fit */
     if (unitNumber >= SDCardBase->sd_UnitCount) {
-        io->io_Error = IOERR_OPENFAIL;
+        io->io_Error = TDERR_BadUnitNum;
     }
 
     /* 
@@ -467,7 +469,7 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                         ULONG *stack = AllocMem(UNIT_TASK_STACKSIZE * sizeof(ULONG), MEMF_PUBLIC | MEMF_CLEAR);
                         const char unit_name[] = "brcm-sdhc unit 0";
                         STRPTR unit_name_copy = AllocMem(sizeof(unit_name), MEMF_PUBLIC | MEMF_CLEAR);
-                        CopyMem(unit_name, unit_name_copy, sizeof(unit_name));
+                        CopyMem((APTR)unit_name, unit_name_copy, sizeof(unit_name));
 
                         ml->ml_NumEntries = 3;
                         ml->ml_ME[0].me_Un.meu_Addr = task;

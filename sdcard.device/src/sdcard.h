@@ -47,7 +47,7 @@ struct SDCardBase {
     UWORD               sd_UnitCount;
 
     struct SignalSemaphore sd_Lock;
-    struct TimeRequest  sd_TimeReq;
+    struct timerequest  sd_TimeReq;
     struct MsgPort      sd_Port;
 
     void              (*sd_DoIO)(struct IORequest *io, struct SDCardBase * SDCardBase);
