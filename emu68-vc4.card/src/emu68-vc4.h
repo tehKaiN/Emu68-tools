@@ -33,6 +33,9 @@ struct VC4Base {
     APTR                    vc4_Request;
     APTR                    vc4_MemBase;
     uint32_t                vc4_MemSize;
+    APTR                    vc4_Framebuffer;
+    uint32_t                vc4_Pitch;
+    uint16_t                vc4_Enabled;
 };
 
 struct Size {

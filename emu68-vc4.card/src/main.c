@@ -197,8 +197,15 @@ static int FindCard(struct BoardInfo* bi asm("a0"), struct VC4Base *VC4Base asm(
     get_vc_memory(&VC4Base->vc4_MemBase, &VC4Base->vc4_MemSize, VC4Base);
 
     /* Set basic data in BoardInfo structure */
-    bi->MemoryBase = VC4Base->vc4_MemBase;
+
+    /* 
+        Warning - P96 does not work well with concept of single visible framebuffer.
+        Therefore, we provide here a block of "video memory". VC4 will just permanently upload it to the framebuffer
+
+        TODO: Free this memory once driver deinitializes.
+    */
     bi->MemorySize = VC4Base->vc4_MemSize;
+    bi->MemoryBase = AllocMem(VC4Base->vc4_MemSize, MEMF_PUBLIC);
     bi->RegisterBase = NULL;
 
     return 1;
@@ -367,6 +374,7 @@ struct VC4Base * vc4_Init(struct VC4Base *base asm("d0"), BPTR seglist asm("a0")
     VC4Base->vc4_SegList = seglist;
     VC4Base->vc4_SysBase = SysBase;
     VC4Base->vc4_LibNode.LibBase.lib_Revision = VC4CARD_REVISION;
+    VC4Base->vc4_Enabled = -1;
 
     return VC4Base;
 }
@@ -388,10 +396,8 @@ const uint32_t InitTable[4] = {
     (uint32_t)vc4_Init
 };
 
-
-
-
-UWORD CalculateBytesPerRow (__REGA0(struct BoardInfo *b), __REGD0(UWORD width), __REGD7(RGBFTYPE format)) {
+UWORD CalculateBytesPerRow(struct BoardInfo *b asm("a0"), UWORD width asm("d0"), RGBFTYPE format asm("d7"))
+{
     if (!b)
         return 0;
 
@@ -417,30 +423,48 @@ UWORD CalculateBytesPerRow (__REGA0(struct BoardInfo *b), __REGD0(UWORD width), 
     }
 }
 
-void SetDAC (__REGA0(struct BoardInfo *b), __REGD7(RGBFTYPE format)) {
+void SetDAC(struct BoardInfo *b asm("a0"), RGBFTYPE format asm("d7"))
+{
     // Used to set the color format of the video card's RAMDAC.
     // This needs no handling, since the PiStorm doesn't really have a RAMDAC or a video card chipset.
 }
 
-void SetGC (__REGA0(struct BoardInfo *b), __REGA1(struct ModeInfo *mode_info), __REGD0(BOOL border)) {
+void SetGC(struct BoardInfo *b asm("a0"), struct ModeInfo *mode_info asm("a1"), BOOL border asm("d0"))
+{
+    struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
+    struct Size dim;
+
     b->ModeInfo = mode_info;
-    // TODO: Set frame buffer width, height and format using mailbox interface?
-    // I have no idea.
+
+    dim.width = mode_info->Width;
+    dim.height = mode_info->Height;
+    
+    init_display(dim, mode_info->Depth, &VC4Base->vc4_Framebuffer, &VC4Base->vc4_Pitch, VC4Base);
 }
 
-int setswitch = -1;
-UWORD SetSwitch (__REGA0(struct BoardInfo *b), __REGD0(UWORD enabled)) {
-    if (setswitch != enabled) {
-        setswitch = enabled;
+UWORD SetSwitch(struct BoardInfo *b asm("a0"), UWORD enabled asm("d0"))
+{
+    struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
+
+    if (VC4Base->vc4_Enabled != enabled) {
+        VC4Base->vc4_Enabled = enabled;
+
+        switch(enabled) {
+            case 0:
+                blank_screen(1, VC4Base);
+                break;
+            default:
+                blank_screen(0, VC4Base);
+                break;
+        }
     }
     
-    // TODO: Enable or disable the RTG display using mailbox interface or something
-
     return 1 - enabled;
 }
 
 
-void SetPanning (__REGA0(struct BoardInfo *b), __REGA1(UBYTE *addr), __REGD0(UWORD width), __REGD1(WORD x_offset), __REGD2(WORD y_offset), __REGD7(RGBFTYPE format)) {
+void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD width asm("d0"), WORD x_offset asm("d1"), WORD y_offset asm("d2"), RGBFTYPE format asm("d7"))
+{
     // TODO: Set the framebuffer offset to the absolute address provided in addr.
     // "width" contains the pitch of the screen being panned to.
 }
@@ -538,3 +562,98 @@ void WaitVerticalSync (__REGA0(struct BoardInfo *b), __REGD0(BOOL toggle)) {
     // Always returning instantly here will wreak havoc with some crap like the mouse wheel thing that waits for vertical blank to poll the mouse.
     return;
 }
+
+
+#if 0
+
+unsigned char a[] = {
+  0x10, 0xf0, 0x00, 0xc0, 0x80, 0x03, 0x10, 0xf8, 0x40, 0xc0, 0x40, 0x00,
+  0xc0, 0xf3, 0x00, 0x00, 0x10, 0xf8, 0x80, 0xc0, 0x00, 0x00, 0xc0, 0xf3,
+  0x01, 0x00, 0x10, 0xf8, 0xc0, 0xc0, 0x40, 0x00, 0xc0, 0xf3, 0x01, 0x00,
+  0x90, 0xf0, 0x30, 0x00, 0x81, 0x03, 0x90, 0xf8, 0x30, 0x00, 0x40, 0x10,
+  0xc0, 0xf3, 0x04, 0x00, 0x90, 0xf8, 0x30, 0x00, 0x00, 0x20, 0xc0, 0xf3,
+  0x05, 0x00, 0x90, 0xf8, 0x30, 0x00, 0x40, 0x30, 0xc0, 0xf3, 0x05, 0x00,
+  0x40, 0xe8, 0x00, 0x01, 0x00, 0x00, 0x41, 0xe8, 0x00, 0x01, 0x00, 0x00,
+  0x12, 0x66, 0x02, 0x6a, 0xd4, 0x18, 0x5a, 0x00
+};
+
+void test()
+{
+    int c = 1;
+    FBReq[c++] = 0;
+    FBReq[c++] = LE32(0x3000c);
+    FBReq[c++] = LE32(12);
+    FBReq[c++] = 0;
+    FBReq[c++] = LE32(sizeof(a));  // 32 bytes
+    FBReq[c++] = LE32(4);   // 4 byte align
+    FBReq[c++] = LE32((3 << 2) | (1 << 6));   // COHERENT | DIRECT | HINT_PERMALOCK
+    FBReq[c++] = 0;
+    FBReq[0] = LE32(4*c);
+
+    arm_flush_cache((intptr_t)FBReq, 4*c);
+    mbox_send(8, mmu_virt2phys((intptr_t)FBReq));
+    mbox_recv(8);
+
+    int handle = LE32(FBReq[5]);
+    kprintf("Alloc returned %d\n", handle);
+
+    c = 1;
+    FBReq[c++] = 0;
+    FBReq[c++] = LE32(0x0003000d);
+    FBReq[c++] = LE32(4);
+    FBReq[c++] = 0;
+    FBReq[c++] = LE32(handle);  // 32 bytes
+    FBReq[c++] = 0;
+    FBReq[0] = LE32(4*c);
+    
+    arm_flush_cache((intptr_t)FBReq, 4*c);
+    mbox_send(8, mmu_virt2phys((intptr_t)FBReq));
+    mbox_recv(8);
+
+    uint64_t phys = LE32(FBReq[5]);
+    uint64_t cpu = phys & ~0xc0000000;
+    kprintf("Locl memory returned %08x, CPU addr %08x\n", phys, cpu);
+
+    phys &= ~0xc0000000;
+    for (unsigned i=0; i < sizeof(a); i++)
+        ((uint8_t *)cpu)[i] = a[i];
+    arm_flush_cache(cpu, sizeof(a));
+
+    kprintf("test code uploaded\n");
+
+    kprintf("running code with r0=%08x, r1=%08x, r2=%08x\n", 0xc0000000, fb_phys_base, 30000);
+
+    uint32_t t0 = LE32(*(volatile uint32_t*)0xf2003004);
+
+for (int i=0; i < 20000; i++) {
+    if (i == 1)
+        phys++;
+    c = 1;
+    FBReq[c++] = 0;
+    FBReq[c++] = LE32(0x00030010);
+    FBReq[c++] = LE32(28);
+    FBReq[c++] = 0;
+    FBReq[c++] = LE32(phys);  // code address
+    FBReq[c++] = LE32(0xc0000000 + (0x3fffffff & ((uint64_t)i * 15000*256))); // r0 source address
+    FBReq[c++] = LE32(fb_phys_base); // r1 dest address
+    FBReq[c++] = LE32(7500); // r2 Number of 256-byte packets
+    FBReq[c++] = 0; // r3
+    FBReq[c++] = 0; // r4
+    FBReq[c++] = 0; // r5
+
+    FBReq[c++] = 0;
+    FBReq[0] = LE32(4*c);
+    
+    arm_flush_cache((intptr_t)FBReq, 4*c);
+    mbox_send(8, mmu_virt2phys((intptr_t)FBReq));
+    mbox_recv(8);
+}
+
+    uint32_t t1 = LE32(*(volatile uint32_t*)0xf2003004);
+
+    kprintf("Returned from test code. Retval = %08x\n", LE32(FBReq[5]));
+    kprintf("Time wasted: %d milliseconds\n", (t1 - t0) / 1000);
+    
+}
+
+#endif
