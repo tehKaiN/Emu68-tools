@@ -142,7 +142,7 @@ struct Size get_display_size(struct VC4Base * VC4Base)
     return sz;
 }
 
-void init_display(struct Size dimensions, void **framebuffer, uint32_t *pitch, struct VC4Base * VC4Base)
+void init_display(struct Size dimensions, uint8_t depth, void **framebuffer, uint32_t *pitch, struct VC4Base * VC4Base)
 {
     struct ExecBase *SysBase = VC4Base->vc4_SysBase;
 
@@ -168,7 +168,7 @@ void init_display(struct Size dimensions, void **framebuffer, uint32_t *pitch, s
     FBReq[c++] = LE32(0x48005);   // Set depth
     FBReq[c++] = LE32(4);
     FBReq[c++] = LE32(0);
-    FBReq[c++] = LE32(16);
+    FBReq[c++] = LE32(depth);
 
     FBReq[c++] = LE32(0x40001); // Allocate buffer
     FBReq[c++] = LE32(8);
@@ -193,16 +193,6 @@ void init_display(struct Size dimensions, void **framebuffer, uint32_t *pitch, s
 
     uint32_t _base = LE32(FBReq[pos_buffer_base]);
     uint32_t _pitch = LE32(FBReq[pos_buffer_pitch]);
-
-    if ((_base & 0xc0000000) == 0x40000000)
-    {
-        // Cached buffer
-    }
-    else if ((_base & 0xc0000000) == 0xc0000000)
-    {
-        // Uncached buffer
-    }
-    _base &= ~0xc0000000;
 
     if (framebuffer)
         *framebuffer = (void*)(intptr_t)_base;
