@@ -20,6 +20,7 @@
 #include "boardinfo.h"
 #include "emu68-vc4.h"
 #include "mbox.h"
+#include "vpu/block_copy.h"
 
 int __attribute__((no_reorder)) _start()
 {
@@ -46,6 +47,11 @@ const struct Resident RomTag __attribute__((used)) = {
 
 const char deviceName[] = "emu68-vc4.card";
 const char deviceIdString[] = VERSION_STRING;
+
+static void putch(UBYTE data asm("d0"), APTR ignore asm("a3"))
+{
+    *(UBYTE*)0xdeadbeef = data;
+}
 
 /*
     Some properties, like e.g. #size-cells, are not always available in a key, but in that case the properties
@@ -79,6 +85,8 @@ static int FindCard(struct BoardInfo* bi asm("a0"), struct VC4Base *VC4Base asm(
 
     // Cancel loading the driver if left or right shift is being held down.
     struct IORequest io;
+
+    RawDoFmt("[vc4] FindCard\n", NULL, (APTR)putch, NULL);
 
     if (OpenDevice((STRPTR)"input.device", 0, &io, 0) == 0)
     {
@@ -131,6 +139,8 @@ static int FindCard(struct BoardInfo* bi asm("a0"), struct VC4Base *VC4Base asm(
     }
 
     VC4Base->vc4_Request = (ULONG *)(((intptr_t)VC4Base->vc4_RequestBase + 127) & ~127);
+
+    RawDoFmt("[vc4] Request buffer at %08lx\n", &VC4Base->vc4_Request, (APTR)putch, NULL);
 
     /* Get VC4 physical address of mailbox interface. Subsequently it will be translated to m68k physical address */
     key = DT_OpenKey("/aliases");
@@ -193,6 +203,8 @@ static int FindCard(struct BoardInfo* bi asm("a0"), struct VC4Base *VC4Base asm(
         DT_CloseKey(key);
     }
 
+    RawDoFmt("[vc4] MailBox at %08lx\n", &VC4Base->vc4_MailBox, (APTR)putch, NULL);
+
     /* Find out base address of framebuffer and video memory size */
     get_vc_memory(&VC4Base->vc4_MemBase, &VC4Base->vc4_MemSize, VC4Base);
 
@@ -208,11 +220,25 @@ static int FindCard(struct BoardInfo* bi asm("a0"), struct VC4Base *VC4Base asm(
     bi->MemoryBase = AllocMem(VC4Base->vc4_MemSize, MEMF_PUBLIC);
     bi->RegisterBase = NULL;
 
+    {
+        ULONG args[] = {
+            (ULONG)bi->MemoryBase,
+            bi->MemorySize / (1024*1024)
+        };
+        RawDoFmt("[vc4] Memory base at %08lx, size %ldMB\n", args, (APTR)putch, NULL);
+    }
+
+    VC4Base->vc4_VPU_CopyBlock = (APTR)upload_code(vpu_block_copy, sizeof(vpu_block_copy), VC4Base);
+
+    RawDoFmt("[vc4] VPU CopyBlock pointer at %08lx\n", &VC4Base->vc4_VPU_CopyBlock, (APTR)putch, NULL);
+
     return 1;
 }
 
 static int InitCard(struct BoardInfo* bi asm("a0"), struct VC4Base *VC4Base asm("a6"))
 {
+    struct ExecBase *SysBase = VC4Base->vc4_SysBase;
+
     bi->CardBase = (struct CardBase *)VC4Base;
     bi->ExecBase = VC4Base->vc4_SysBase;
     bi->BoardName = "Emu68 VC4";
@@ -221,7 +247,7 @@ static int InitCard(struct BoardInfo* bi asm("a0"), struct VC4Base *VC4Base asm(
     bi->GraphicsControllerType = GCT_S3ViRGE;
 
     bi->Flags |= BIF_GRANTDIRECTACCESS | BIF_FLICKERFIXER;// | BIF_HARDWARESPRITE;// | BIF_BLITTER;
-    bi->RGBFormats = RGBFF_HICOLOR | RGBFF_TRUEALPHA | RGBFF_CLUT;
+    bi->RGBFormats = RGBFF_TRUEALPHA; //RGBFF_HICOLOR | RGBFF_TRUEALPHA | RGBFF_CLUT;
     bi->SoftSpriteFlags = 0;
     bi->BitsPerCannon = 8;
 
@@ -299,13 +325,18 @@ static int InitCard(struct BoardInfo* bi asm("a0"), struct VC4Base *VC4Base asm(
     //bi->SetFeatureAttrs = (void *)NULL;
     //bi->DeleteFeature = (void *)NULL;
 
+    RawDoFmt("[vc4] InitCard ready\n", NULL, (APTR)putch, NULL);
+
     return 1;
 }
 
 static struct VC4Base * OpenLib(ULONG version asm("d0"), struct VC4Base *VC4Base asm("a6"))
 {
+    struct ExecBase *SysBase = *(struct ExecBase **)4;
     VC4Base->vc4_LibNode.LibBase.lib_OpenCnt++;
     VC4Base->vc4_LibNode.LibBase.lib_Flags &= ~LIBF_DELEXP;
+
+    RawDoFmt("[vc4] OpenLib\n", NULL, (APTR)putch, NULL);
 
     return VC4Base;
 }
@@ -398,10 +429,21 @@ const uint32_t InitTable[4] = {
 
 UWORD CalculateBytesPerRow(struct BoardInfo *b asm("a0"), UWORD width asm("d0"), RGBFTYPE format asm("d7"))
 {
+    struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
+    struct ExecBase *SysBase = VC4Base->vc4_SysBase;
+
     if (!b)
         return 0;
 
     UWORD pitch = width;
+
+    {
+        ULONG args[] = {
+            pitch, format
+        };
+        RawDoFmt("[vc4] CalculateBytesPerRow pitch %ld, format %lx\n", args, (APTR)putch, NULL);
+    }
+    
 
     switch(format) {
         case RGBFB_CLUT:
@@ -425,6 +467,9 @@ UWORD CalculateBytesPerRow(struct BoardInfo *b asm("a0"), UWORD width asm("d0"),
 
 void SetDAC(struct BoardInfo *b asm("a0"), RGBFTYPE format asm("d7"))
 {
+    struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
+    struct ExecBase *SysBase = VC4Base->vc4_SysBase;
+    RawDoFmt("[vc4] SetDAC\n", NULL, (APTR)putch, NULL);
     // Used to set the color format of the video card's RAMDAC.
     // This needs no handling, since the PiStorm doesn't really have a RAMDAC or a video card chipset.
 }
@@ -432,6 +477,7 @@ void SetDAC(struct BoardInfo *b asm("a0"), RGBFTYPE format asm("d7"))
 void SetGC(struct BoardInfo *b asm("a0"), struct ModeInfo *mode_info asm("a1"), BOOL border asm("d0"))
 {
     struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
+    struct ExecBase *SysBase = VC4Base->vc4_SysBase;
     struct Size dim;
 
     b->ModeInfo = mode_info;
@@ -439,12 +485,27 @@ void SetGC(struct BoardInfo *b asm("a0"), struct ModeInfo *mode_info asm("a1"), 
     dim.width = mode_info->Width;
     dim.height = mode_info->Height;
     
+    {
+        ULONG args[] = {
+            dim.width, dim.height, mode_info->Depth
+        };
+        RawDoFmt("[vc4] SetGC %ld x %ld x %ld\n", args, (APTR)putch, NULL);
+    }
+
     init_display(dim, mode_info->Depth, &VC4Base->vc4_Framebuffer, &VC4Base->vc4_Pitch, VC4Base);
 }
 
 UWORD SetSwitch(struct BoardInfo *b asm("a0"), UWORD enabled asm("d0"))
 {
     struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
+    struct ExecBase *SysBase = VC4Base->vc4_SysBase;
+
+    {
+        ULONG args[] = {
+            enabled
+        };
+        RawDoFmt("[vc4] SetSwitch %ld\n", args, (APTR)putch, NULL);
+    }
 
     if (VC4Base->vc4_Enabled != enabled) {
         VC4Base->vc4_Enabled = enabled;
@@ -465,6 +526,16 @@ UWORD SetSwitch(struct BoardInfo *b asm("a0"), UWORD enabled asm("d0"))
 
 void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD width asm("d0"), WORD x_offset asm("d1"), WORD y_offset asm("d2"), RGBFTYPE format asm("d7"))
 {
+    struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
+    struct ExecBase *SysBase = VC4Base->vc4_SysBase;
+
+    {
+        ULONG args[] = {
+            (ULONG)addr, width, x_offset, y_offset, format
+        };
+        RawDoFmt("[vc4] SetPanning %lx %ld %ld %ld %lx\n", args, (APTR)putch, NULL);
+    }
+
     // TODO: Set the framebuffer offset to the absolute address provided in addr.
     // "width" contains the pitch of the screen being panned to.
 }
@@ -472,10 +543,20 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
 unsigned int palette[256];
 
 void SetColorArray (__REGA0(struct BoardInfo *b), __REGD0(UWORD start), __REGD1(UWORD num)) {
+    struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
+    struct ExecBase *SysBase = VC4Base->vc4_SysBase;
+
     // Sets the color components of X color components for 8-bit paletted display modes.
     if (!b->CLUT)
         return;
     
+    {
+        ULONG args[] = {
+            start, num
+        };
+        RawDoFmt("[vc4] SetColorArray %ld %ld\n", args, (APTR)putch, NULL);
+    }
+
     int j = start + num;
     
     for(int i = start; i < j; i++) {
@@ -486,6 +567,16 @@ void SetColorArray (__REGA0(struct BoardInfo *b), __REGD0(UWORD start), __REGD1(
 
 
 APTR CalculateMemory (__REGA0(struct BoardInfo *b), __REGA1(unsigned long addr), __REGD7(RGBFTYPE format)) {
+    struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
+    struct ExecBase *SysBase = VC4Base->vc4_SysBase;
+
+    {
+        ULONG args[] = {
+            addr, format
+        };
+        RawDoFmt("[vc4] CalculateMemory %lx %lx\n", args, (APTR)putch, NULL);
+    }
+
     return (APTR)addr;
 }
 
@@ -515,19 +606,50 @@ enum fake_rgbftypes {
 #define BIP(a) (1 << a)
 
 ULONG GetCompatibleFormats (__REGA0(struct BoardInfo *b), __REGD7(RGBFTYPE format)) {
+    struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
+    struct ExecBase *SysBase = VC4Base->vc4_SysBase;
+    {
+        ULONG args[] = {
+            format
+        };
+        RawDoFmt("[vc4] GetCompatibleFormats %lx\n", args, (APTR)putch, NULL);
+    }
     //return BIP(RGBF_8BPP_CLUT) | BIP(RGBF_24BPP_RGB) | BIP(RGBF_24BPP_BGR) | BIP(RGBF_32BPP_ARGB) | BIP(RGBF_32BPP_ABGR) | BIP(RGBF_32BPP_RGBA) | BIP(RGBF_32BPP_BGRA);
     return 0xFFFFFFFF;
 }
 
 //static int display_enabled = 0;
-UWORD SetDisplay (__REGA0(struct BoardInfo *b), __REGD0(UWORD enabled)) {
-    // Blanks or unblanks the RTG display
+UWORD SetDisplay (__REGA0(struct BoardInfo *b), __REGD0(UWORD enabled))
+{
+    struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
+    struct ExecBase *SysBase = VC4Base->vc4_SysBase;
+    {
+        ULONG args[] = {
+            enabled
+        };
+        RawDoFmt("[vc4] SetDisplay %ld\n", args, (APTR)putch, NULL);
+    }
+    if (enabled) {
+        blank_screen(0, VC4Base);
+    } else {
+        blank_screen(1, VC4Base);
+    }
 
     return 1;
 }
 
 
 LONG ResolvePixelClock (__REGA0(struct BoardInfo *b), __REGA1(struct ModeInfo *mode_info), __REGD0(ULONG pixel_clock), __REGD7(RGBFTYPE format)) {
+
+    struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
+    struct ExecBase *SysBase = VC4Base->vc4_SysBase;
+    {
+        ULONG args[] = {
+            (ULONG)mode_info, pixel_clock, format
+        };
+        RawDoFmt("[vc4] ResolvePixelClock %lx %ld %lx\n", args, (APTR)putch, NULL);
+    }
+
     mode_info->PixelClock = CLOCK_HZ;
     mode_info->pll1.Clock = 0;
     mode_info->pll2.ClockDivide = 1;

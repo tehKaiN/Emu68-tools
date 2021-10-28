@@ -36,6 +36,8 @@ struct VC4Base {
     APTR                    vc4_Framebuffer;
     uint32_t                vc4_Pitch;
     uint16_t                vc4_Enabled;
+
+    APTR                    vc4_VPU_CopyBlock;
 };
 
 struct Size {

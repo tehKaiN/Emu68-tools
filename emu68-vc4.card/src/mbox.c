@@ -222,3 +222,57 @@ int blank_screen(int blank, struct VC4Base *VC4Base)
 
     return LE32(FBReq[5]) & 1;
 }
+
+uint32_t upload_code(const void * code, uint32_t code_size, struct VC4Base *VC4Base)
+{
+    struct ExecBase *SysBase = VC4Base->vc4_SysBase;
+    ULONG *FBReq = VC4Base->vc4_Request;
+    ULONG handle;
+    ULONG phys_addr;
+    UBYTE *ptr;
+
+    /* Allocate buffer for the code on VC4 */
+    FBReq[0] = LE32(4*9);
+    FBReq[1] = 0;
+    FBReq[2] = LE32(0x3000c);
+    FBReq[3] = LE32(12);
+    FBReq[4] = 0;
+    FBReq[5] = LE32(code_size);
+    FBReq[6] = LE32(4);   // 4 byte align
+    FBReq[7] = LE32((3 << 2) | (1 << 6));   // COHERENT | DIRECT | HINT_PERMALOCK
+    FBReq[8] = 0;
+
+    CacheClearE(FBReq, 4*9, CACRF_ClearD);
+    mbox_send(8, (ULONG)FBReq, VC4Base);
+    mbox_recv(8, VC4Base);
+
+    handle = LE32(FBReq[5]);
+
+    /* Lock the block so that it remains alive all the time */
+    FBReq[0] = LE32(4*7);
+    FBReq[1] = 0;
+    FBReq[2] = LE32(0x0003000d);
+    FBReq[3] = LE32(4);
+    FBReq[4] = 0;
+    FBReq[5] = LE32(handle);  // 32 bytes
+    FBReq[6] = 0;
+
+    CacheClearE(FBReq, 4*9, CACRF_ClearD);
+    mbox_send(8, (ULONG)FBReq, VC4Base);
+    mbox_recv(8, VC4Base);
+
+    /* Get physical address. This is in VPU's view! */
+    phys_addr = LE32(FBReq[5]);
+
+    /* Convert address to CPU view, upload code there */
+    ptr = (UBYTE *)(phys_addr & 0x3fffffff);
+    for (int i=0; i < code_size; i++) {
+        ptr[i] = ((UBYTE*)code)[i];
+    }
+
+    /* Clear caches to make sure code is in VPU's accessible memory */
+    CacheClearE(ptr, code_size, CACRF_ClearD);
+
+    /* Return back physical address */
+    return phys_addr;
+}
