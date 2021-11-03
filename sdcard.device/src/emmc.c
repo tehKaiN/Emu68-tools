@@ -1048,7 +1048,7 @@ static int sd_do_data_command(int is_write, uint8_t *buf, uint32_t buf_size, uin
     }
 
 	int retry_count = 0;
-	int max_retries = 3;
+	int max_retries = 5;
 	while(retry_count < max_retries)
 	{
         SDCardBase->sd_CMD(command, block_no, 5000000, SDCardBase);
@@ -1057,13 +1057,25 @@ static int sd_do_data_command(int is_write, uint8_t *buf, uint32_t buf_size, uin
             break;
         else
         {
-            RawDoFmt("SD: error sending CMD%ld, ", &command, (APTR)putch, NULL);
-            RawDoFmt("error = %08lx.  ", &SDCardBase->sd_LastError, (APTR)putch, NULL);
+            // In the data transfer state - cancel the transmission
+            SDCardBase->sd_CMD(STOP_TRANSMISSION, 0, 500000, SDCardBase);
+            if(FAIL(SDCardBase))
+            {
+                SDCardBase->sd_CardRCA = 0;
+                return -1;
+            }
+
+            // Reset the data circuit
+            sd_reset_dat(SDCardBase);
+            //RawDoFmt("SD: error sending CMD%ld, ", &command, (APTR)putch, NULL);
+            //RawDoFmt("error = %08lx.  ", &SDCardBase->sd_LastError, (APTR)putch, NULL);
             retry_count++;
+            /*
             if(retry_count < max_retries)
                 RawDoFmt("Retrying...\n", NULL, (APTR)putch, NULL);
             else
                 RawDoFmt("Giving up.\n", NULL, (APTR)putch, NULL);
+            */
         }
 	}
 	if(retry_count == max_retries)
