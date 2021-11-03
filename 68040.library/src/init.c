@@ -109,6 +109,29 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
             SysBase->AttnFlags = AFF_68010 | AFF_68020 | AFF_68030 | AFF_68040;
         }
 
+        APTR vbr_old;
+        APTR old_stack = SuperState();
+
+        asm volatile("movec vbr, %0":"=r"(vbr_old));
+
+        if (old_stack != NULL)
+            UserState(old_stack);
+
+        if (vbr_old == NULL) {
+            RawDoFmt("[68040] VBR was at address 0. Moving it to FastRAM\n", NULL, (APTR)putch, NULL);
+            APTR vbr_new = AllocMem(256 * 4, MEMF_PUBLIC | MEMF_CLEAR | MEMF_REVERSE);
+            CopyMemQuick((APTR)vbr_old, vbr_new, 256 * 4);
+
+            APTR old_stack = SuperState();
+
+            asm volatile("movec %0, vbr"::"r"(vbr_new));
+
+            if (old_stack != NULL)
+                UserState(old_stack);
+            
+            RawDoFmt("[68040] VBR moved to %08lx\n", &vbr_new, (APTR)putch, NULL);
+        }
+
         binding.cb_ConfigDev->cd_Flags &= ~CDF_CONFIGME;
         binding.cb_ConfigDev->cd_Driver = LibraryBase;
     }

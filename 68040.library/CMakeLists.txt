@@ -3,7 +3,7 @@ project(68040 VERSION 1.2.0)
 get_verstring(VERSTRING)
 
 add_link_options(-ffreestanding -nostdlib -nostartfiles -Wl,-e_rom_start -Wl,-T${CMAKE_CURRENT_SOURCE_DIR}/ldscript.lds)
-add_compile_options(-Os -m68000 -fomit-frame-pointer)
+add_compile_options(-Os -m68020 -fomit-frame-pointer)
 add_compile_definitions(PRIVATE VERSION_STRING="${VERSTRING}")
 
 add_executable(68040.library
