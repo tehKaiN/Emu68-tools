@@ -116,7 +116,7 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
 
         if (old_stack != NULL)
             UserState(old_stack);
-
+#if 0
         if (vbr_old == NULL) {
             RawDoFmt("[68040] VBR was at address 0. Moving it to FastRAM\n", NULL, (APTR)putch, NULL);
             APTR vbr_new = AllocMem(256 * 4, MEMF_PUBLIC | MEMF_CLEAR | MEMF_REVERSE);
@@ -131,7 +131,7 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
             
             RawDoFmt("[68040] VBR moved to %08lx\n", &vbr_new, (APTR)putch, NULL);
         }
-
+#endif
         binding.cb_ConfigDev->cd_Flags &= ~CDF_CONFIGME;
         binding.cb_ConfigDev->cd_Driver = LibraryBase;
     }
