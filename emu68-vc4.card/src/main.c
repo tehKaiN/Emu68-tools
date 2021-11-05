@@ -216,8 +216,8 @@ static int FindCard(struct BoardInfo* bi asm("a0"), struct VC4Base *VC4Base asm(
 
         TODO: Free this memory once driver deinitializes.
     */
-    bi->MemorySize = VC4Base->vc4_MemSize;
-    bi->MemoryBase = AllocMem(VC4Base->vc4_MemSize, MEMF_PUBLIC);
+    bi->MemorySize = 0x07000000;
+    bi->MemoryBase = (APTR)0x01000000;
     bi->RegisterBase = NULL;
 
     {
@@ -247,7 +247,7 @@ static int InitCard(struct BoardInfo* bi asm("a0"), struct VC4Base *VC4Base asm(
     bi->GraphicsControllerType = GCT_S3ViRGE;
 
     bi->Flags |= BIF_GRANTDIRECTACCESS | BIF_FLICKERFIXER;// | BIF_HARDWARESPRITE;// | BIF_BLITTER;
-    bi->RGBFormats = RGBFF_TRUEALPHA; //RGBFF_HICOLOR | RGBFF_TRUEALPHA | RGBFF_CLUT;
+    bi->RGBFormats = RGBFF_TRUEALPHA | RGBFF_TRUECOLOR | RGBFF_HICOLOR | RGBFF_CLUT; //RGBFF_HICOLOR | RGBFF_TRUEALPHA | RGBFF_CLUT;
     bi->SoftSpriteFlags = 0;
     bi->BitsPerCannon = 8;
 
@@ -458,7 +458,7 @@ UWORD CalculateBytesPerRow(struct BoardInfo *b asm("a0"), UWORD width asm("d0"),
             // Should actually return width * 3, but I'm not sure if
             // the Pi VC supports 24-bit color formats.
             // P96 will sometimes magically pad these to 32-bit anyway.
-            //return (width * 3);
+            return (width * 3);
         case RGBFB_B8G8R8A8: case RGBFB_R8G8B8A8:
         case RGBFB_A8B8G8R8: case RGBFB_A8R8G8B8:
             return (width * 4);
@@ -479,8 +479,12 @@ void SetGC(struct BoardInfo *b asm("a0"), struct ModeInfo *mode_info asm("a1"), 
     struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
     struct ExecBase *SysBase = VC4Base->vc4_SysBase;
     struct Size dim;
+    int need_switch = 0;
 
-    b->ModeInfo = mode_info;
+    if (b->ModeInfo != mode_info) {
+        need_switch = 1;
+        b->ModeInfo = mode_info;
+    }
 
     dim.width = mode_info->Width;
     dim.height = mode_info->Height;
@@ -492,7 +496,9 @@ void SetGC(struct BoardInfo *b asm("a0"), struct ModeInfo *mode_info asm("a1"), 
         RawDoFmt("[vc4] SetGC %ld x %ld x %ld\n", args, (APTR)putch, NULL);
     }
 
-    init_display(dim, mode_info->Depth, &VC4Base->vc4_Framebuffer, &VC4Base->vc4_Pitch, VC4Base);
+    if (need_switch) {
+        init_display(dim, mode_info->Depth, &VC4Base->vc4_Framebuffer, &VC4Base->vc4_Pitch, VC4Base);
+    }
 }
 
 UWORD SetSwitch(struct BoardInfo *b asm("a0"), UWORD enabled asm("d0"))
@@ -523,6 +529,24 @@ UWORD SetSwitch(struct BoardInfo *b asm("a0"), UWORD enabled asm("d0"))
     return 1 - enabled;
 }
 
+static const ULONG mode_table[] = {
+    [RGBFB_A8R8G8B8] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGBA8888) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_ARGB),
+    [RGBFB_A8B8G8R8] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGBA8888) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_ABGR),
+    [RGBFB_B8G8R8A8] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGBA8888) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_BGRA),
+    [RGBFB_R8G8B8A8] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGBA8888) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_RGBA),
+
+    [RGBFB_R8G8B8] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB888) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
+    [RGBFB_B8G8R8] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB888) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XBGR),
+
+    [RGBFB_R5G6B5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB565) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
+    [RGBFB_R5G5B5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB555) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
+    
+    [RGBFB_R5G6B5] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB565) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
+    [RGBFB_R5G5B5] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB555) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
+    
+    [RGBFB_B5G6R5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB565) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XBGR),
+    [RGBFB_B5G5R5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB555) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XBGR),
+};
 
 void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD width asm("d0"), WORD x_offset asm("d1"), WORD y_offset asm("d2"), RGBFTYPE format asm("d7"))
 {
@@ -536,8 +560,27 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
         RawDoFmt("[vc4] SetPanning %lx %ld %ld %ld %lx\n", args, (APTR)putch, NULL);
     }
 
-    // TODO: Set the framebuffer offset to the absolute address provided in addr.
-    // "width" contains the pitch of the screen being panned to.
+    volatile uint32_t *displist = (uint32_t *)0xf2402000;
+
+    displist[0] = LE32(0x80000000);
+
+    displist[1] = LE32(POS0_X(x_offset) | POS0_Y(y_offset) | POS0_ALPHA(0xff));
+    displist[2] = LE32(POS2_H(b->ModeInfo->Height) | POS2_W(b->ModeInfo->Width) | (1 << 30));
+    displist[3] = LE32(0xdeadbeef);
+    displist[4] = LE32(0xc0000000 | (ULONG)addr);
+    displist[5] = LE32(0xdeadbeef);
+    displist[6] = LE32(CalculateBytesPerRow(b, width, format));
+    displist[7] = LE32(0x80000000);
+
+    displist[0] = LE32(
+    CONTROL_VALID
+    | CONTROL_WORDS(7)
+//    | CONTROL0_VFLIP // makes the HVS addr count down instead, pointer word must be last line of image
+    | CONTROL_UNITY
+    | mode_table[format]);
+
+
+    *(uint32_t *)0xf2400024 = LE32(0);
 }
 
 unsigned int palette[256];
