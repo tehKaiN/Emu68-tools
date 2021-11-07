@@ -110,7 +110,7 @@ void get_vc_memory(void **base, uint32_t *size, struct VC4Base * VC4Base)
     }
 }
 
-struct Size get_display_size(struct VC4Base * VC4Base)
+struct Size get_display_size_(struct VC4Base * VC4Base)
 {
     struct ExecBase *SysBase = VC4Base->vc4_SysBase;
 
@@ -136,6 +136,33 @@ struct Size get_display_size(struct VC4Base * VC4Base)
     sz.height = LE32(FBReq[6]);
 
     return sz;
+}
+
+struct Size get_display_size(struct VC4Base *VC4Base)
+{
+    struct ExecBase *SysBase = VC4Base->vc4_SysBase;
+    int c = 1;
+    ULONG *FBReq = VC4Base->vc4_Request;
+    struct Size dimension;
+
+    FBReq[c++] = 0;
+    FBReq[c++] = LE32(0x40004);
+    FBReq[c++] = LE32(8);
+    FBReq[c++] = 0;
+    FBReq[c++] = LE32(0);
+    FBReq[c++] = LE32(0);
+    FBReq[c++] = 0;
+
+    FBReq[0] = LE32(c << 2);
+
+    CacheClearE(FBReq, c*4, CACRF_ClearD);
+    mbox_send(8, (ULONG)FBReq, VC4Base);
+    mbox_recv(8, VC4Base);
+
+    dimension.width = LE32(FBReq[5]);
+    dimension.height = LE32(FBReq[6]);
+
+    return dimension;
 }
 
 void init_display(struct Size dimensions, uint8_t depth, void **framebuffer, uint32_t *pitch, struct VC4Base * VC4Base)

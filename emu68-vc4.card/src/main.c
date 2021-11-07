@@ -228,9 +228,22 @@ static int FindCard(struct BoardInfo* bi asm("a0"), struct VC4Base *VC4Base asm(
         RawDoFmt("[vc4] Memory base at %08lx, size %ldMB\n", args, (APTR)putch, NULL);
     }
 
+    VC4Base->vc4_DispSize = get_display_size(VC4Base);
+
+    {
+        ULONG args[] = {
+            VC4Base->vc4_DispSize.width,
+            VC4Base->vc4_DispSize.height
+        };
+
+        RawDoFmt("[vc4] Physical display size: %ld x %ld\n", args, (APTR)putch, NULL);
+    }
+
+#if 0
     VC4Base->vc4_VPU_CopyBlock = (APTR)upload_code(vpu_block_copy, sizeof(vpu_block_copy), VC4Base);
 
     RawDoFmt("[vc4] VPU CopyBlock pointer at %08lx\n", &VC4Base->vc4_VPU_CopyBlock, (APTR)putch, NULL);
+#endif
 
     return 1;
 }
@@ -481,6 +494,7 @@ void SetGC(struct BoardInfo *b asm("a0"), struct ModeInfo *mode_info asm("a1"), 
     struct Size dim;
     int need_switch = 0;
 
+
     if (b->ModeInfo != mode_info) {
         need_switch = 1;
         b->ModeInfo = mode_info;
@@ -497,7 +511,7 @@ void SetGC(struct BoardInfo *b asm("a0"), struct ModeInfo *mode_info asm("a1"), 
     }
 
     if (need_switch) {
-        init_display(dim, mode_info->Depth, &VC4Base->vc4_Framebuffer, &VC4Base->vc4_Pitch, VC4Base);
+        //init_display(dim, mode_info->Depth, &VC4Base->vc4_Framebuffer, &VC4Base->vc4_Pitch, VC4Base);
     }
 }
 
@@ -518,10 +532,10 @@ UWORD SetSwitch(struct BoardInfo *b asm("a0"), UWORD enabled asm("d0"))
 
         switch(enabled) {
             case 0:
-                blank_screen(1, VC4Base);
+                //blank_screen(1, VC4Base);
                 break;
             default:
-                blank_screen(0, VC4Base);
+                //blank_screen(0, VC4Base);
                 break;
         }
     }
@@ -548,11 +562,26 @@ static const ULONG mode_table[] = {
     [RGBFB_B5G5R5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB555) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XBGR),
 };
 
+static int active_plane = 0x400;
+
 void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD width asm("d0"), WORD x_offset asm("d1"), WORD y_offset asm("d2"), RGBFTYPE format asm("d7"))
 {
     struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
     struct ExecBase *SysBase = VC4Base->vc4_SysBase;
-
+    int unity = 0;
+    ULONG scale_x = 0;
+    ULONG scale_y = 0;
+    ULONG scale = 0;
+    ULONG recip_x = 0;
+    ULONG recip_y = 0;
+    UWORD offset_x = 0;
+    UWORD offset_y = 0;
+    ULONG calc_width = 0;
+    ULONG calc_height = 0;
+    ULONG bytes_per_row = CalculateBytesPerRow(b, width, format);
+    ULONG bytes_per_pix = bytes_per_row / width;
+    UWORD pos = active_plane ^ 0x280;
+    
     {
         ULONG args[] = {
             (ULONG)addr, width, x_offset, y_offset, format
@@ -560,27 +589,104 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
         RawDoFmt("[vc4] SetPanning %lx %ld %ld %ld %lx\n", args, (APTR)putch, NULL);
     }
 
+    if (b->ModeInfo->Width == VC4Base->vc4_DispSize.width &&
+        b->ModeInfo->Height == VC4Base->vc4_DispSize.height)
+    {
+        unity = 1;
+    }
+    else
+    {
+        scale_x = 0x10000 * b->ModeInfo->Width / VC4Base->vc4_DispSize.width;
+        scale_y = 0x10000 * b->ModeInfo->Height / VC4Base->vc4_DispSize.height;
+        recip_x = 0xffffffff / scale_x;
+        recip_y = 0xffffffff / scale_y;
+
+
+        // Select larger scaling factor from X and Y, but it need to fit
+        if (((0x10000 * b->ModeInfo->Height) / scale_x) > VC4Base->vc4_DispSize.height) {
+            scale = scale_y;
+        }
+        else {
+            scale = scale_x;
+        }
+
+        calc_width = (0x10000 * b->ModeInfo->Width) / scale;
+        calc_height = (0x10000 * b->ModeInfo->Height) / scale;
+
+        offset_x = (VC4Base->vc4_DispSize.width - calc_width) >> 1;
+        offset_y = (VC4Base->vc4_DispSize.height - calc_height) >> 1;
+
+        ULONG args[] = {
+            scale, scale_x, scale_y, recip_x, recip_y,
+            calc_width, calc_height, offset_x, offset_y
+        };
+
+        RawDoFmt("[vc4] Selected scale: %08lx (X: %08lx, Y: %08lx, 1/X: %08lx, 1/Y: %08lx)\n"
+                "[vc4] Scaled size: %ld x %ld, offset X %ld, offset Y %ld\n", args, (APTR)putch, NULL);
+    }
+
     volatile uint32_t *displist = (uint32_t *)0xf2402000;
+   
+    if (unity) {
+        displist[pos + 1] = LE32(POS0_X(x_offset) | POS0_Y(y_offset) | POS0_ALPHA(0xff));
+        displist[pos + 2] = LE32(POS2_H(b->ModeInfo->Height) | POS2_W(b->ModeInfo->Width) | (1 << 30));
+        displist[pos + 3] = LE32(0xdeadbeef);
+        displist[pos + 4] = LE32(0xc0000000 | (ULONG)addr + y_offset * bytes_per_row + x_offset * bytes_per_pix);
+        displist[pos + 5] = LE32(0xdeadbeef);
+        displist[pos + 6] = LE32(bytes_per_row);
+        displist[pos + 7] = LE32(0x80000000);
 
-    displist[0] = LE32(0x80000000);
+        displist[pos + 0] = LE32(
+        CONTROL_VALID
+        | CONTROL_WORDS(7)
+        | CONTROL_UNITY
+        | mode_table[format]);
+    } else {
+        displist[pos + 1] = LE32(POS0_X(offset_x) | POS0_Y(offset_y) | POS0_ALPHA(0xff));
+        displist[pos + 2] = LE32(POS1_H(calc_height) | POS1_W(calc_width));
+        displist[pos + 3] = LE32(POS2_H(b->ModeInfo->Height) | POS2_W(b->ModeInfo->Width) | (SCALER_POS2_ALPHA_MODE_FIXED << SCALER_POS2_ALPHA_MODE_SHIFT));
 
-    displist[1] = LE32(POS0_X(x_offset) | POS0_Y(y_offset) | POS0_ALPHA(0xff));
-    displist[2] = LE32(POS2_H(b->ModeInfo->Height) | POS2_W(b->ModeInfo->Width) | (1 << 30));
-    displist[3] = LE32(0xdeadbeef);
-    displist[4] = LE32(0xc0000000 | (ULONG)addr);
-    displist[5] = LE32(0xdeadbeef);
-    displist[6] = LE32(CalculateBytesPerRow(b, width, format));
-    displist[7] = LE32(0x80000000);
+        displist[pos + 4] = LE32(0xdeadbeef);
+        displist[pos + 5] = LE32(0xc0000000 | (ULONG)addr + y_offset * bytes_per_row + x_offset * bytes_per_pix);
+        displist[pos + 6] = LE32(0xdeadbeef);
 
-    displist[0] = LE32(
-    CONTROL_VALID
-    | CONTROL_WORDS(7)
-//    | CONTROL0_VFLIP // makes the HVS addr count down instead, pointer word must be last line of image
-    | CONTROL_UNITY
-    | mode_table[format]);
+        displist[pos + 7] = LE32(bytes_per_row);
+
+        displist[pos + 8] = LE32(8);
+
+        displist[pos + 9] = LE32(0);
+        displist[pos + 10] = LE32(0x40000060 | (scale << 8));
+        displist[pos + 11] = displist[pos + 10];
+        displist[pos + 12] = LE32(0);
+
+        displist[pos + 13] = LE32(0xff4);
+        displist[pos + 14] = LE32(0xff4);
 
 
-    *(uint32_t *)0xf2400024 = LE32(0);
+        displist[pos + 15] = LE32(0x80000000);
+
+        displist[pos + 0] = LE32(
+            CONTROL_VALID           |
+            CONTROL_WORDS(15)       |
+            0x00400800              |
+            mode_table[format]
+        );
+    }
+
+    *(uint32_t *)0xf2400024 = LE32(pos);
+
+    active_plane = pos;
+
+    for (int i=0; i < 64; i++) {
+        if (displist[i + pos] == LE32(0x80000000))
+            break;
+        
+        ULONG args[] = {
+            i, LE32(displist[i])
+        };
+
+        RawDoFmt("%04ld: %08lx\n", args, (APTR)putch, NULL);
+    }
 }
 
 unsigned int palette[256];

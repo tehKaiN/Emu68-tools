@@ -20,6 +20,11 @@
 
 #define CLOCK_HZ        100000000
 
+struct Size {
+    UWORD width;
+    UWORD height;
+};
+
 struct VC4Base {
     struct CardBase         vc4_LibNode;
     BPTR                    vc4_SegList;
@@ -38,13 +43,11 @@ struct VC4Base {
     uint32_t                vc4_Pitch;
     uint16_t                vc4_Enabled;
 
+    struct Size             vc4_DispSize;
+
     APTR                    vc4_VPU_CopyBlock;
 };
 
-struct Size {
-    UWORD width;
-    UWORD height;
-};
 
 
 
@@ -145,7 +148,25 @@ enum hvs_pixel_format {
 #define POS0_Y(n) ((n & 0xfff) << 12)
 #define POS0_ALPHA(n) ((n & 0xff) << 24)
 
+#define POS1_W(n) (n & 0xffff)
+#define POS1_H(n) ((n & 0xffff) << 16)
+
 #define POS2_W(n) (n & 0xffff)
 #define POS2_H(n) ((n & 0xffff) << 16)
+
+#define SCALER_POS2_ALPHA_MODE_MASK             0xc0000000
+#define SCALER_POS2_ALPHA_MODE_SHIFT            30
+#define SCALER_POS2_ALPHA_MODE_PIPELINE         0
+#define SCALER_POS2_ALPHA_MODE_FIXED            1
+#define SCALER_POS2_ALPHA_MODE_FIXED_NONZERO    2
+#define SCALER_POS2_ALPHA_MODE_FIXED_OVER_0x07  3
+#define SCALER_POS2_ALPHA_PREMULT               (1 << 29)
+#define SCALER_POS2_ALPHA_MIX                   (1 << 28)
+
+#define SCALER_POS2_HEIGHT_MASK                 0x0fff0000
+#define SCALER_POS2_HEIGHT_SHIFT                16
+
+#define SCALER_POS2_WIDTH_MASK                  0x00000fff
+#define SCALER_POS2_WIDTH_SHIFT                 0
 
 #endif /* _EMU68_VC4_H */
