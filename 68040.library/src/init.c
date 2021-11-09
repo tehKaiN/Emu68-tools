@@ -99,14 +99,23 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
         AddLibrary(LibraryBase);
 
         {
+            UWORD new_flags = SysBase->AttnFlags & 0x8000;
+            int has_fpu = (SysBase->AttnFlags & (AFF_FPU40 | AFF_68881 | AFF_68882)) != 0;
+
+            new_flags |= AFF_68010 | AFF_68020 | AFF_68030 | AFF_68040;
+
+            if (has_fpu) {
+                new_flags |= AFF_FPU40 | AFF_68881;
+            }
+
             ULONG args[] = {
                 SysBase->AttnFlags,
-                AFF_68010 | AFF_68020 | AFF_68030 | AFF_68040
+                new_flags
             };
 
-            RawDoFmt("[68040] Found AttnFlags = %08lx. Patching to %08lx\n", args, (APTR)putch, NULL);
+            RawDoFmt("[68040] Found AttnFlags = %08lx. Setting to to %08lx\n", args, (APTR)putch, NULL);
 
-            SysBase->AttnFlags = AFF_68010 | AFF_68020 | AFF_68030 | AFF_68040;
+            SysBase->AttnFlags = new_flags;
         }
 
         APTR vbr_old;
