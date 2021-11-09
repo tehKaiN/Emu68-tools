@@ -95,8 +95,8 @@ static void MountPartitions(struct SDCardUnit *unit)
                     {
                         ULONG *paramPkt = AllocMem(24 * sizeof(ULONG), MEMF_PUBLIC);
                         UBYTE *name = AllocMem(buff.part.pb_DriveName[0] + 5, MEMF_PUBLIC);
+                        struct ConfigDev *cdev = SDCardBase->sd_ConfigDev;
 
-                
                         for (int i=0; i < buff.part.pb_DriveName[0]; i++) {
                             name[i] = buff.part.pb_DriveName[1+i];
                         }
@@ -110,8 +110,13 @@ static void MountPartitions(struct SDCardUnit *unit)
                             paramPkt[4+i] = buff.part.pb_Environment[i];
                         }
 
+                        if ((buff.part.pb_Flags & PBFF_BOOTABLE) == 0) {
+                            paramPkt[DE_BOOTPRI + 4] = -128;
+                            cdev = NULL;
+                        }
+
                         struct DeviceNode *devNode = MakeDosNode(paramPkt);
-                        AddBootNode(paramPkt[DE_BOOTPRI + 4], 0, devNode, SDCardBase->sd_ConfigDev);
+                        AddBootNode(paramPkt[DE_BOOTPRI + 4], 0, devNode, cdev);
                     }
                 }
             }
