@@ -46,9 +46,10 @@ struct VC4Base {
     struct Size             vc4_DispSize;
 
     APTR                    vc4_VPU_CopyBlock;
+
+    int                     vc4_ActivePlane;
+    int                     vc4_FreePlane;
 };
-
-
 
 
 void SetDAC(struct BoardInfo *bi asm("a0"), RGBFTYPE format asm("d7"));
@@ -168,5 +169,11 @@ enum hvs_pixel_format {
 
 #define SCALER_POS2_WIDTH_MASK                  0x00000fff
 #define SCALER_POS2_WIDTH_SHIFT                 0
+
+#define SCALER_DISPSTAT0                        0x00000048
+#define SCALER_DISPSTAT1                        0x00000058
+#define SCALER_DISPSTAT2                        0x00000068
+#define SCALER_DISPSTATX_FRAME_COUNT_MASK      VC4_MASK(17, 12)
+#define SCALER_DISPSTATX_FRAME_COUNT_SHIFT     12
 
 #endif /* _EMU68_VC4_H */

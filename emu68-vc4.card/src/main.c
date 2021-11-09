@@ -450,6 +450,7 @@ UWORD CalculateBytesPerRow(struct BoardInfo *b asm("a0"), UWORD width asm("d0"),
 
     UWORD pitch = width;
 
+    if (0)
     {
         ULONG args[] = {
             pitch, format
@@ -482,7 +483,9 @@ void SetDAC(struct BoardInfo *b asm("a0"), RGBFTYPE format asm("d7"))
 {
     struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
     struct ExecBase *SysBase = VC4Base->vc4_SysBase;
-    RawDoFmt("[vc4] SetDAC\n", NULL, (APTR)putch, NULL);
+    
+    if (0)
+        RawDoFmt("[vc4] SetDAC\n", NULL, (APTR)putch, NULL);
     // Used to set the color format of the video card's RAMDAC.
     // This needs no handling, since the PiStorm doesn't really have a RAMDAC or a video card chipset.
 }
@@ -503,6 +506,7 @@ void SetGC(struct BoardInfo *b asm("a0"), struct ModeInfo *mode_info asm("a1"), 
     dim.width = mode_info->Width;
     dim.height = mode_info->Height;
     
+    if (0)
     {
         ULONG args[] = {
             dim.width, dim.height, mode_info->Depth
@@ -520,6 +524,7 @@ UWORD SetSwitch(struct BoardInfo *b asm("a0"), UWORD enabled asm("d0"))
     struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
     struct ExecBase *SysBase = VC4Base->vc4_SysBase;
 
+    if (0)
     {
         ULONG args[] = {
             enabled
@@ -552,17 +557,33 @@ static const ULONG mode_table[] = {
     [RGBFB_R8G8B8] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB888) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
     [RGBFB_B8G8R8] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB888) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XBGR),
 
-    [RGBFB_R5G6B5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB565) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
-    [RGBFB_R5G5B5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB555) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
+    [RGBFB_R5G6B5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB565) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XBGR),
+    [RGBFB_R5G5B5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB555) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XBGR),
     
     [RGBFB_R5G6B5] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB565) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
     [RGBFB_R5G5B5] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB555) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
     
-    [RGBFB_B5G6R5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB565) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XBGR),
-    [RGBFB_B5G5R5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB555) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XBGR),
+    [RGBFB_B5G6R5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB565) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
+    [RGBFB_B5G5R5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB555) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
+
+    [RGBFB_CLUT] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_PALETTE) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XBGR)
 };
 
-static int active_plane = 0x400;
+int AllocSlot(UWORD size, struct VC4Base *VC4Base)
+{
+    int ret = VC4Base->vc4_FreePlane;
+    int next_free = VC4Base->vc4_FreePlane + size;
+
+    if (next_free >= 0x300)
+    {
+        ret = 0;
+        next_free = ret + size;
+    }
+
+    VC4Base->vc4_FreePlane = next_free;
+
+    return ret;
+}
 
 void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD width asm("d0"), WORD x_offset asm("d1"), WORD y_offset asm("d2"), RGBFTYPE format asm("d7"))
 {
@@ -580,16 +601,17 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
     ULONG calc_height = 0;
     ULONG bytes_per_row = CalculateBytesPerRow(b, width, format);
     ULONG bytes_per_pix = bytes_per_row / width;
-    UWORD pos = active_plane ^ 0x280;
-    
-    {
+    UWORD pos = 0;
+
+    if (0) {
         ULONG args[] = {
             (ULONG)addr, width, x_offset, y_offset, format
         };
         RawDoFmt("[vc4] SetPanning %lx %ld %ld %ld %lx\n", args, (APTR)putch, NULL);
     }
 
-    if (b->ModeInfo->Width == VC4Base->vc4_DispSize.width &&
+    if (format != RGBFB_CLUT &&
+        b->ModeInfo->Width == VC4Base->vc4_DispSize.width &&
         b->ModeInfo->Height == VC4Base->vc4_DispSize.height)
     {
         unity = 1;
@@ -600,7 +622,6 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
         scale_y = 0x10000 * b->ModeInfo->Height / VC4Base->vc4_DispSize.height;
         recip_x = 0xffffffff / scale_x;
         recip_y = 0xffffffff / scale_y;
-
 
         // Select larger scaling factor from X and Y, but it need to fit
         if (((0x10000 * b->ModeInfo->Height) / scale_x) > VC4Base->vc4_DispSize.height) {
@@ -621,13 +642,22 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
             calc_width, calc_height, offset_x, offset_y
         };
 
-        RawDoFmt("[vc4] Selected scale: %08lx (X: %08lx, Y: %08lx, 1/X: %08lx, 1/Y: %08lx)\n"
-                "[vc4] Scaled size: %ld x %ld, offset X %ld, offset Y %ld\n", args, (APTR)putch, NULL);
+        if (0)
+            RawDoFmt("[vc4] Selected scale: %08lx (X: %08lx, Y: %08lx, 1/X: %08lx, 1/Y: %08lx)\n"
+                    "[vc4] Scaled size: %ld x %ld, offset X %ld, offset Y %ld\n", args, (APTR)putch, NULL);
     }
 
     volatile uint32_t *displist = (uint32_t *)0xf2402000;
    
     if (unity) {
+        pos = AllocSlot(8, VC4Base);
+
+        displist[pos + 0] = LE32(
+            CONTROL_VALID
+            | CONTROL_WORDS(7)
+            | CONTROL_UNITY
+            | mode_table[format]);
+
         displist[pos + 1] = LE32(POS0_X(x_offset) | POS0_Y(y_offset) | POS0_ALPHA(0xff));
         displist[pos + 2] = LE32(POS2_H(b->ModeInfo->Height) | POS2_W(b->ModeInfo->Width) | (1 << 30));
         displist[pos + 3] = LE32(0xdeadbeef);
@@ -635,13 +665,9 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
         displist[pos + 5] = LE32(0xdeadbeef);
         displist[pos + 6] = LE32(bytes_per_row);
         displist[pos + 7] = LE32(0x80000000);
-
-        displist[pos + 0] = LE32(
-        CONTROL_VALID
-        | CONTROL_WORDS(7)
-        | CONTROL_UNITY
-        | mode_table[format]);
     } else {
+        pos = AllocSlot(16, VC4Base);
+
         displist[pos + 1] = LE32(POS0_X(offset_x) | POS0_Y(offset_y) | POS0_ALPHA(0xff));
         displist[pos + 2] = LE32(POS1_H(calc_height) | POS1_W(calc_width));
         displist[pos + 3] = LE32(POS2_H(b->ModeInfo->Height) | POS2_W(b->ModeInfo->Width) | (SCALER_POS2_ALPHA_MODE_FIXED << SCALER_POS2_ALPHA_MODE_SHIFT));
@@ -652,7 +678,7 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
 
         displist[pos + 7] = LE32(bytes_per_row);
 
-        displist[pos + 8] = LE32(8);
+        displist[pos + 8] = LE32(0xc0000000 | (0x300 << 2));
 
         displist[pos + 9] = LE32(0);
         displist[pos + 10] = LE32(0x40000060 | (scale << 8));
@@ -662,43 +688,30 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
         displist[pos + 13] = LE32(0xff4);
         displist[pos + 14] = LE32(0xff4);
 
-
         displist[pos + 15] = LE32(0x80000000);
 
         displist[pos + 0] = LE32(
             CONTROL_VALID           |
             CONTROL_WORDS(15)       |
-            0x00400800              |
+            (format == RGBFB_CLUT ? 0x01800 : 0x00400800) |
             mode_table[format]
         );
     }
 
-    *(uint32_t *)0xf2400024 = LE32(pos);
-
-    active_plane = pos;
-
-    for (int i=0; i < 64; i++) {
-        if (displist[i + pos] == LE32(0x80000000))
-            break;
-        
-        ULONG args[] = {
-            i, LE32(displist[i])
-        };
-
-        RawDoFmt("%04ld: %08lx\n", args, (APTR)putch, NULL);
-    }
+    *(volatile uint32_t *)0xf2400024 = LE32(pos);
+    VC4Base->vc4_ActivePlane = pos;
 }
-
-unsigned int palette[256];
 
 void SetColorArray (__REGA0(struct BoardInfo *b), __REGD0(UWORD start), __REGD1(UWORD num)) {
     struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
     struct ExecBase *SysBase = VC4Base->vc4_SysBase;
+    volatile uint32_t *displist = (uint32_t *)0xf2402000;
 
     // Sets the color components of X color components for 8-bit paletted display modes.
     if (!b->CLUT)
         return;
     
+    if (0)
     {
         ULONG args[] = {
             start, num
@@ -709,8 +722,8 @@ void SetColorArray (__REGA0(struct BoardInfo *b), __REGD0(UWORD start), __REGD1(
     int j = start + num;
     
     for(int i = start; i < j; i++) {
-        unsigned long xrgb = 0 | (b->CLUT[i].Red << 16) | (b->CLUT[i].Green << 8) | (b->CLUT[i].Blue);
-        palette[i] = xrgb;
+        unsigned long xrgb = 0xff000000 | (b->CLUT[i].Blue) | (b->CLUT[i].Green << 8) | (b->CLUT[i].Red << 16);
+        displist[0x300 + i] = LE32(xrgb);
     }
 }
 
@@ -719,6 +732,7 @@ APTR CalculateMemory (__REGA0(struct BoardInfo *b), __REGA1(unsigned long addr),
     struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
     struct ExecBase *SysBase = VC4Base->vc4_SysBase;
 
+    if (0)
     {
         ULONG args[] = {
             addr, format
@@ -757,6 +771,7 @@ enum fake_rgbftypes {
 ULONG GetCompatibleFormats (__REGA0(struct BoardInfo *b), __REGD7(RGBFTYPE format)) {
     struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
     struct ExecBase *SysBase = VC4Base->vc4_SysBase;
+    if (0)
     {
         ULONG args[] = {
             format
@@ -772,6 +787,8 @@ UWORD SetDisplay (__REGA0(struct BoardInfo *b), __REGD0(UWORD enabled))
 {
     struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
     struct ExecBase *SysBase = VC4Base->vc4_SysBase;
+    
+    if (0)
     {
         ULONG args[] = {
             enabled
@@ -792,6 +809,8 @@ LONG ResolvePixelClock (__REGA0(struct BoardInfo *b), __REGA1(struct ModeInfo *m
 
     struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
     struct ExecBase *SysBase = VC4Base->vc4_SysBase;
+    
+    if (0)
     {
         ULONG args[] = {
             (ULONG)mode_info, pixel_clock, format
@@ -826,12 +845,12 @@ void SetClearMask (__REGA0(struct BoardInfo *b), __REGD0(UBYTE mask)) {
 void SetReadPlane (__REGA0(struct BoardInfo *b), __REGD0(UBYTE plane)) {
 }
 
-static uint16_t vblank = 1;
-
 void WaitVerticalSync (__REGA0(struct BoardInfo *b), __REGD0(BOOL toggle)) {
-    // TODO: Wait for vertical sync interrupt on the Raspberry Pi or whatever
-    // Always returning instantly here will wreak havoc with some crap like the mouse wheel thing that waits for vertical blank to poll the mouse.
-    return;
+
+    volatile ULONG *stat = (ULONG*)(0xf2400000 + SCALER_DISPSTAT1);
+    ULONG cnt1 = (LE32(*stat) >> 12) & 0x3f;
+
+    do {} while(((LE32(*stat) >> 12) & 0x3f) == cnt1);
 }
 
 
