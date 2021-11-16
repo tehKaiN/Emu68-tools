@@ -18,7 +18,7 @@
 #define VC4CARD_PRIORITY 0
 #define MBOX_SIZE        (512 * 4)
 
-#define CLOCK_HZ        100000000
+#define CLOCK_HZ        25000000
 
 struct Size {
     UWORD width;
