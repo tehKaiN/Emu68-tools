@@ -515,6 +515,7 @@ void SetGC(struct BoardInfo *b asm("a0"), struct ModeInfo *mode_info asm("a1"), 
     }
 
     if (need_switch) {
+        VC4Base->vc4_LastPanning.lp_Addr = NULL;
         //init_display(dim, mode_info->Depth, &VC4Base->vc4_Framebuffer, &VC4Base->vc4_Pitch, VC4Base);
     }
 }
@@ -610,6 +611,24 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
         RawDoFmt("[vc4] SetPanning %lx %ld %ld %ld %lx\n", args, (APTR)putch, NULL);
     }
 
+    if (addr == VC4Base->vc4_LastPanning.lp_Addr &&
+        width == VC4Base->vc4_LastPanning.lp_Width &&
+        x_offset == VC4Base->vc4_LastPanning.lp_X &&
+        y_offset == VC4Base->vc4_LastPanning.lp_Y &&
+        format == VC4Base->vc4_LastPanning.lp_Format)
+    {
+        if (0)
+            RawDoFmt("[vc4] same panning as before. Skipping now\n", NULL, (APTR)putch, NULL);
+        
+        return;
+    }
+
+    VC4Base->vc4_LastPanning.lp_Addr = addr;
+    VC4Base->vc4_LastPanning.lp_Width = width;
+    VC4Base->vc4_LastPanning.lp_X = x_offset;
+    VC4Base->vc4_LastPanning.lp_Y = y_offset;
+    VC4Base->vc4_LastPanning.lp_Format = format;
+
     if (format != RGBFB_CLUT &&
         b->ModeInfo->Width == VC4Base->vc4_DispSize.width &&
         b->ModeInfo->Height == VC4Base->vc4_DispSize.height)
@@ -658,7 +677,7 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
             | CONTROL_UNITY
             | mode_table[format]);
 
-        displist[pos + 1] = LE32(POS0_X(x_offset) | POS0_Y(y_offset) | POS0_ALPHA(0xff));
+        displist[pos + 1] = LE32(POS0_X(offset_x) | POS0_Y(offset_y) | POS0_ALPHA(0xff));
         displist[pos + 2] = LE32(POS2_H(b->ModeInfo->Height) | POS2_W(b->ModeInfo->Width) | (1 << 30));
         displist[pos + 3] = LE32(0xdeadbeef);
         displist[pos + 4] = LE32(0xc0000000 | (ULONG)addr + y_offset * bytes_per_row + x_offset * bytes_per_pix);

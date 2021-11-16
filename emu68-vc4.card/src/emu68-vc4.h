@@ -49,6 +49,15 @@ struct VC4Base {
 
     int                     vc4_ActivePlane;
     int                     vc4_FreePlane;
+
+    struct {
+        APTR        lp_Addr;
+        UWORD       lp_Width;
+        WORD        lp_X;
+        WORD        lp_Y;
+        RGBFTYPE    lp_Format;
+    }                       vc4_LastPanning;
+    
 };
 
 
