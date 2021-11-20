@@ -239,6 +239,8 @@ static int FindCard(struct BoardInfo* bi asm("a0"), struct VC4Base *VC4Base asm(
         RawDoFmt("[vc4] Physical display size: %ld x %ld\n", args, (APTR)putch, NULL);
     }
 
+    VC4Base->vc4_ActivePlane = -1;
+
 #if 0
     VC4Base->vc4_VPU_CopyBlock = (APTR)upload_code(vpu_block_copy, sizeof(vpu_block_copy), VC4Base);
 
@@ -260,7 +262,11 @@ static int InitCard(struct BoardInfo* bi asm("a0"), struct VC4Base *VC4Base asm(
     bi->GraphicsControllerType = GCT_S3ViRGE;
 
     bi->Flags |= BIF_GRANTDIRECTACCESS | BIF_FLICKERFIXER;// | BIF_HARDWARESPRITE;// | BIF_BLITTER;
-    bi->RGBFormats = RGBFF_TRUEALPHA | RGBFF_TRUECOLOR | RGBFF_HICOLOR | RGBFF_CLUT; //RGBFF_HICOLOR | RGBFF_TRUEALPHA | RGBFF_CLUT;
+    bi->RGBFormats = 
+        RGBFF_TRUEALPHA | 
+        RGBFF_TRUECOLOR | 
+        RGBFF_R5G6B5PC | RGBFF_R5G5B5PC | RGBFF_B5G6R5PC | RGBFF_B5G5R5PC | // RGBFF_HICOLOR | 
+        RGBFF_CLUT; //RGBFF_HICOLOR | RGBFF_TRUEALPHA | RGBFF_CLUT;
     bi->SoftSpriteFlags = 0;
     bi->BitsPerCannon = 8;
 
@@ -558,14 +564,14 @@ static const ULONG mode_table[] = {
     [RGBFB_R8G8B8] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB888) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
     [RGBFB_B8G8R8] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB888) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XBGR),
 
-    [RGBFB_R5G6B5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB565) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XBGR),
-    [RGBFB_R5G5B5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB555) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XBGR),
+    [RGBFB_R5G6B5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB565) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
+    [RGBFB_R5G5B5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB555) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
     
     [RGBFB_R5G6B5] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB565) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
     [RGBFB_R5G5B5] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB555) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
     
-    [RGBFB_B5G6R5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB565) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
-    [RGBFB_B5G5R5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB555) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
+    [RGBFB_B5G6R5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB565) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XBGR),
+    [RGBFB_B5G5R5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB555) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XBGR),
 
     [RGBFB_CLUT] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_PALETTE) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XBGR)
 };
@@ -603,6 +609,7 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
     ULONG bytes_per_row = CalculateBytesPerRow(b, width, format);
     ULONG bytes_per_pix = bytes_per_row / width;
     UWORD pos = 0;
+    int offset_only = 0;
 
     if (0) {
         ULONG args[] = {
@@ -611,16 +618,18 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
         RawDoFmt("[vc4] SetPanning %lx %ld %ld %ld %lx\n", args, (APTR)putch, NULL);
     }
 
-    if (addr == VC4Base->vc4_LastPanning.lp_Addr &&
+    if (VC4Base->vc4_LastPanning.lp_Addr != NULL && 
         width == VC4Base->vc4_LastPanning.lp_Width &&
-        x_offset == VC4Base->vc4_LastPanning.lp_X &&
-        y_offset == VC4Base->vc4_LastPanning.lp_Y &&
         format == VC4Base->vc4_LastPanning.lp_Format)
     {
-        if (0)
-            RawDoFmt("[vc4] same panning as before. Skipping now\n", NULL, (APTR)putch, NULL);
-        
-        return;
+        if (addr == VC4Base->vc4_LastPanning.lp_Addr && x_offset == VC4Base->vc4_LastPanning.lp_X && y_offset == VC4Base->vc4_LastPanning.lp_Y) {
+            if (0) {
+                RawDoFmt("[vc4] same panning as before. Skipping now\n", NULL, (APTR)putch, NULL);
+            }
+            return;
+        }
+
+        offset_only = 1;
     }
 
     VC4Base->vc4_LastPanning.lp_Addr = addr;
@@ -669,56 +678,72 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
     volatile uint32_t *displist = (uint32_t *)0xf2402000;
    
     if (unity) {
-        pos = AllocSlot(8, VC4Base);
+        if (offset_only) {
+            pos = VC4Base->vc4_ActivePlane;
+            displist[pos + 4] = LE32(0xc0000000 | (ULONG)addr + y_offset * bytes_per_row + x_offset * bytes_per_pix);
+        }
+        else {
+            pos = AllocSlot(8, VC4Base);
 
-        displist[pos + 0] = LE32(
-            CONTROL_VALID
-            | CONTROL_WORDS(7)
-            | CONTROL_UNITY
-            | mode_table[format]);
+            displist[pos + 0] = LE32(
+                CONTROL_VALID
+                | CONTROL_WORDS(7)
+                | CONTROL_UNITY
+                | mode_table[format]);
 
-        displist[pos + 1] = LE32(POS0_X(offset_x) | POS0_Y(offset_y) | POS0_ALPHA(0xff));
-        displist[pos + 2] = LE32(POS2_H(b->ModeInfo->Height) | POS2_W(b->ModeInfo->Width) | (1 << 30));
-        displist[pos + 3] = LE32(0xdeadbeef);
-        displist[pos + 4] = LE32(0xc0000000 | (ULONG)addr + y_offset * bytes_per_row + x_offset * bytes_per_pix);
-        displist[pos + 5] = LE32(0xdeadbeef);
-        displist[pos + 6] = LE32(bytes_per_row);
-        displist[pos + 7] = LE32(0x80000000);
+            displist[pos + 1] = LE32(POS0_X(offset_x) | POS0_Y(offset_y) | POS0_ALPHA(0xff));
+            displist[pos + 2] = LE32(POS2_H(b->ModeInfo->Height) | POS2_W(b->ModeInfo->Width) | (1 << 30));
+            displist[pos + 3] = LE32(0xdeadbeef);
+            displist[pos + 4] = LE32(0xc0000000 | (ULONG)addr + y_offset * bytes_per_row + x_offset * bytes_per_pix);
+            displist[pos + 5] = LE32(0xdeadbeef);
+            displist[pos + 6] = LE32(bytes_per_row);
+            displist[pos + 7] = LE32(0x80000000);
+        }
     } else {
-        pos = AllocSlot(16, VC4Base);
+        if (offset_only) {
+            pos = VC4Base->vc4_ActivePlane;
+            displist[pos + 5] = LE32(0xc0000000 | (ULONG)addr + y_offset * bytes_per_row + x_offset * bytes_per_pix);
+        }
+        else 
+        {
+            pos = AllocSlot(16, VC4Base);
 
-        displist[pos + 1] = LE32(POS0_X(offset_x) | POS0_Y(offset_y) | POS0_ALPHA(0xff));
-        displist[pos + 2] = LE32(POS1_H(calc_height) | POS1_W(calc_width));
-        displist[pos + 3] = LE32(POS2_H(b->ModeInfo->Height) | POS2_W(b->ModeInfo->Width) | (SCALER_POS2_ALPHA_MODE_FIXED << SCALER_POS2_ALPHA_MODE_SHIFT));
+            displist[pos + 1] = LE32(POS0_X(offset_x) | POS0_Y(offset_y) | POS0_ALPHA(0xff));
+            displist[pos + 2] = LE32(POS1_H(calc_height) | POS1_W(calc_width));
+            displist[pos + 3] = LE32(POS2_H(b->ModeInfo->Height) | POS2_W(b->ModeInfo->Width) | (SCALER_POS2_ALPHA_MODE_FIXED << SCALER_POS2_ALPHA_MODE_SHIFT));
 
-        displist[pos + 4] = LE32(0xdeadbeef);
-        displist[pos + 5] = LE32(0xc0000000 | (ULONG)addr + y_offset * bytes_per_row + x_offset * bytes_per_pix);
-        displist[pos + 6] = LE32(0xdeadbeef);
+            displist[pos + 4] = LE32(0xdeadbeef);
+            displist[pos + 5] = LE32(0xc0000000 | (ULONG)addr + y_offset * bytes_per_row + x_offset * bytes_per_pix);
+            displist[pos + 6] = LE32(0xdeadbeef);
 
-        displist[pos + 7] = LE32(bytes_per_row);
+            displist[pos + 7] = LE32(bytes_per_row);
 
-        displist[pos + 8] = LE32(0xc0000000 | (0x300 << 2));
+            displist[pos + 8] = LE32(0xc0000000 | (0x300 << 2));
 
-        displist[pos + 9] = LE32(0);
-        displist[pos + 10] = LE32(0x40000060 | (scale << 8));
-        displist[pos + 11] = displist[pos + 10];
-        displist[pos + 12] = LE32(0);
+            displist[pos + 9] = LE32(0);
+            displist[pos + 10] = LE32(0x40000060 | (scale << 8));
+            displist[pos + 11] = displist[pos + 10];
+            displist[pos + 12] = LE32(0);
 
-        displist[pos + 13] = LE32(0xff4);
-        displist[pos + 14] = LE32(0xff4);
+            displist[pos + 13] = LE32(0xff4);
+            displist[pos + 14] = LE32(0xff4);
 
-        displist[pos + 15] = LE32(0x80000000);
+            displist[pos + 15] = LE32(0x80000000);
 
-        displist[pos + 0] = LE32(
-            CONTROL_VALID           |
-            CONTROL_WORDS(15)       |
-            (format == RGBFB_CLUT ? 0x01800 : 0x00400800) |
-            mode_table[format]
-        );
+            displist[pos + 0] = LE32(
+                CONTROL_VALID           |
+                CONTROL_WORDS(15)       |
+                (format == RGBFB_CLUT ? 0x01800 : 0x00400800) |
+                mode_table[format]
+            );
+        }
     }
 
-    *(volatile uint32_t *)0xf2400024 = LE32(pos);
-    VC4Base->vc4_ActivePlane = pos;
+    if (pos != VC4Base->vc4_ActivePlane)
+    {
+        *(volatile uint32_t *)0xf2400024 = LE32(pos);
+        VC4Base->vc4_ActivePlane = pos;
+    }
 }
 
 void SetColorArray (__REGA0(struct BoardInfo *b), __REGD0(UWORD start), __REGD1(UWORD num)) {
