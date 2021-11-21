@@ -70,7 +70,7 @@
  #pragma amicall(DeviceTreeBase, 0x2a, DT_GetPropName(a0))
 #endif /* __CLIB_PRAGMA_AMICALL */
 #ifdef __CLIB_PRAGMA_LIBCALL
- #pragma libcall DeviceTreeBase DT_GetPropVaue 30 801
+ #pragma libcall DeviceTreeBase DT_GetPropValue 30 801
 #endif /* __CLIB_PRAGMA_LIBCALL */
 #ifdef __CLIB_PRAGMA_AMICALL
  #pragma amicall(DeviceTreeBase, 0x30, DT_GetPropValue(a0))

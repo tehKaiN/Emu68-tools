@@ -49,7 +49,7 @@ typedef ULONG _sfdc_vararg;
       , DEVICETREE_BASE_NAME)
 
 #define DT_GetPropValue(___property) \
-      LP1(0x30, CONST_APTR, DT_GetPropVaue , APTR, ___property, a0,\
+      LP1(0x30, CONST_APTR, DT_GetPropValue , APTR, ___property, a0,\
       , DEVICETREE_BASE_NAME)
 
 #define DT_GetParent(___key) \
