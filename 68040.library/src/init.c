@@ -13,6 +13,7 @@
 
 #include <proto/exec.h>
 #include <proto/expansion.h>
+#include <proto/devicetree.h>
 
 #include <libraries/configregs.h>
 #include <libraries/configvars.h>
@@ -60,11 +61,58 @@ static void putch(UBYTE data asm("d0"), APTR ignore asm("a3"))
     *(UBYTE*)0xdeadbeef = data;
 }
 
+CONST_STRPTR FindToken(CONST_STRPTR string, CONST_STRPTR token)
+{
+    CONST_STRPTR ret = NULL;
+
+    if (string)
+    {
+        do {
+            while (*string == ' ' || *string == '\t') {
+                string++;
+            }
+
+            if (*string == 0)
+                break;
+
+            for (int i=0; token[i] != 0; i++)
+            {
+                if (string[i] != token[i])
+                {
+                    break;
+                }
+
+                if (token[i] == '=') {
+                    ret = string;
+                    break;
+                }
+
+                if (string[i+1] == 0 || string[i+1] == ' ' || string[i+1] == '\t') {
+                    ret = string;
+                    break;
+                }
+            }
+
+            if (ret)
+                break;
+
+            while(*string != 0) {
+                if (*string != ' ' && *string != '\t')
+                    string++;
+                else break;
+            }
+
+        } while(!ret && *string != 0);
+    }
+    return ret;
+}
+
 APTR Init(struct ExecBase *SysBase asm("a6"))
 {
     struct Library *LibraryBase = NULL;
     struct ExpansionBase *ExpansionBase = NULL;
     struct CurrentBinding binding;
+    APTR DeviceTreeBase;
 
     APTR base_pointer = NULL;
     
@@ -118,29 +166,35 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
             SysBase->AttnFlags = new_flags;
         }
 
-        APTR vbr_old;
-        APTR old_stack = SuperState();
+        DeviceTreeBase = OpenResource("devicetree.resource");
 
-        asm volatile("movec vbr, %0":"=r"(vbr_old));
+        if (DeviceTreeBase)
+        {
+            const char *cmdline = DT_GetPropValue(DT_FindProperty(DT_OpenKey("/chosen"), "bootargs"));
 
-        if (old_stack != NULL)
-            UserState(old_stack);
-#if 0
-        if (vbr_old == NULL) {
-            RawDoFmt("[68040] VBR was at address 0. Moving it to FastRAM\n", NULL, (APTR)putch, NULL);
-            APTR vbr_new = AllocMem(256 * 4, MEMF_PUBLIC | MEMF_CLEAR | MEMF_REVERSE);
-            CopyMemQuick((APTR)vbr_old, vbr_new, 256 * 4);
+            if (FindToken(cmdline, "vbr_move"))
+            {
+                RawDoFmt("[68040] VBR move requested\n", NULL, (APTR)putch, NULL);
 
-            APTR old_stack = SuperState();
+                APTR vbr_old;
+                APTR old_stack = SuperState();
 
-            asm volatile("movec %0, vbr"::"r"(vbr_new));
+                asm volatile("movec vbr, %0":"=r"(vbr_old));
 
-            if (old_stack != NULL)
-                UserState(old_stack);
-            
-            RawDoFmt("[68040] VBR moved to %08lx\n", &vbr_new, (APTR)putch, NULL);
+                if (vbr_old == NULL) {
+                    APTR vbr_new = AllocMem(256 * 4, MEMF_PUBLIC | MEMF_CLEAR | MEMF_REVERSE);
+                    CopyMemQuick((APTR)vbr_old, vbr_new, 256 * 4);
+
+                    asm volatile("movec %0, vbr"::"r"(vbr_new));
+                    
+                    RawDoFmt("[68040] VBR moved to %08lx\n", &vbr_new, (APTR)putch, NULL);
+                }
+
+                if (old_stack != NULL)
+                    UserState(old_stack);
+            }
         }
-#endif
+
         binding.cb_ConfigDev->cd_Flags &= ~CDF_CONFIGME;
         binding.cb_ConfigDev->cd_Driver = LibraryBase;
     }
