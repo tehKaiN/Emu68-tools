@@ -50,6 +50,7 @@
 
 #include "sdcard.h"
 #include "emmc.h"
+#include "sdhost.h"
 #include "mbox.h"
 
 ULONG SD_Expunge(struct SDCardBase * SDCardBase asm("a6"))
@@ -272,15 +273,26 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
             SDCardBase->set_led_state = (APTR)((ULONG)set_led_state + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
 
             /* Set SD functions in device base */
+#if USE_SDHOST
+            SDCardBase->sd_PowerCycle = (APTR)((ULONG)sdhost_powerCycle + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+            SDCardBase->sd_SetLED = (APTR)((ULONG)sdhost_led + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+            SDCardBase->sd_GetBaseClock = (APTR)((ULONG)sdhost_getclock + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+            SDCardBase->sd_CardInit = (APTR)((ULONG)sdhost_card_init + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+            SDCardBase->sd_CMD = (APTR)((ULONG)sdhost_cmd + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+            SDCardBase->sd_CMD_int = (APTR)((ULONG)sdhost_cmd_int + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+            SDCardBase->sd_Read = (APTR)((ULONG)sdhost_read + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+            SDCardBase->sd_Write = (APTR)((ULONG)sdhost_write + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+#else
             SDCardBase->sd_PowerCycle = (APTR)((ULONG)powerCycle + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
             SDCardBase->sd_SetLED = (APTR)((ULONG)led + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
-            SDCardBase->sd_Delay = (APTR)((ULONG)delay + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
             SDCardBase->sd_GetBaseClock = (APTR)((ULONG)getclock + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
             SDCardBase->sd_CMD = (APTR)((ULONG)cmd + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
             SDCardBase->sd_CMD_int = (APTR)((ULONG)cmd_int + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
             SDCardBase->sd_CardInit = (APTR)((ULONG)sd_card_init + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
             SDCardBase->sd_Read = (APTR)((ULONG)sd_read + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
             SDCardBase->sd_Write = (APTR)((ULONG)sd_write + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+#endif
+            SDCardBase->sd_Delay = (APTR)((ULONG)delay + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
 
             SumLibrary((struct Library*)SDCardBase);
 
@@ -319,6 +331,7 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                         DT_CloseKey(key);
                     }
                 }
+                DT_CloseKey(key);
             }
 
             /* Open /aliases and find out the "link" to the emmc */
@@ -351,6 +364,40 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                         DT_CloseKey(key);
                     }
                 }               
+                DT_CloseKey(key);
+            }
+
+            /* Open /aliases and find out the "link" to the sdhost */
+            key = DT_OpenKey("/aliases");
+            if (key)
+            {
+                CONST_STRPTR sdhost_alias = DT_GetPropValue(DT_FindProperty(key, "sdhost"));
+
+                DT_CloseKey(key);
+               
+                if (sdhost_alias != NULL)
+                {
+                    /* Open the alias and find out the MMIO VC4 physical base address */
+                    key = DT_OpenKey(sdhost_alias);
+                    if (key) {
+                        int size_cells = 1;
+                        int address_cells = 1;
+
+                        const ULONG * siz = GetPropValueRecursive(key, "#size_cells", DeviceTreeBase);
+                        const ULONG * addr = GetPropValueRecursive(key, "#address-cells", DeviceTreeBase);
+
+                        if (siz != NULL)
+                            size_cells = *siz;
+                        
+                        if (addr != NULL)
+                            address_cells = *addr;
+
+                        const ULONG *reg = DT_GetPropValue(DT_FindProperty(key, "reg"));
+                        SDCardBase->sd_SDHOST = (APTR)reg[address_cells - 1];
+                        DT_CloseKey(key);
+                    }
+                }               
+                DT_CloseKey(key);
             }
 
             /* Open /soc key and learn about VC4 to CPU mapping. Use it to adjust the addresses obtained above */
@@ -376,9 +423,11 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
 
                 SDCardBase->sd_MailBox = (APTR)((ULONG)SDCardBase->sd_MailBox - phys_vc4 + phys_cpu);
                 SDCardBase->sd_SDHC = (APTR)((ULONG)SDCardBase->sd_SDHC - phys_vc4 + phys_cpu);
+                SDCardBase->sd_SDHOST = (APTR)((ULONG)SDCardBase->sd_SDHOST - phys_vc4 + phys_cpu);
 
                 RawDoFmt("[brcm-sdhc] Mailbox at %08lx\n", &SDCardBase->sd_MailBox, (APTR)putch, NULL);
                 RawDoFmt("[brcm-sdhc] SDHC regs at %08lx\n", &SDCardBase->sd_SDHC, (APTR)putch, NULL);
+                RawDoFmt("[brcm-sdhc] SDHOST regs at %08lx\n", &SDCardBase->sd_SDHOST, (APTR)putch, NULL);
 
                 DT_CloseKey(key);
             }
@@ -391,15 +440,21 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                 /* Turn the power/act led off */
                 SDCardBase->sd_SetLED(0, SDCardBase);
 
-                /* Select AF3 on GPIOs 48..53 */
+                /* Select AF3 on GPIOs 48..53 for SDHC */
+                /* Select AF0 on GPIOs 48..53 for SDHOST */
                 ULONG tmp = rd32((APTR)0xf2200000, 0x10);
-                tmp &= 0xffffff;
-                tmp |= 0x3f000000;
-                
+                tmp &= 0x00ffffff;
+#if USE_SDHOST
+                tmp |= 0x24000000; //0x3f000000 - AF3, 0x24000000 - AF0;
                 wr32((APTR)0xf2200000, 0x10, tmp);
-                wr32((APTR)0xf2200000, 0x14, 0xfff);
+                wr32((APTR)0xf2200000, 0x14, 0x924); // 0xfff - AF3, 0x924 - AF0;
+#else
+                tmp |= 0x3f000000; //0x3f000000 - AF3, 0x24000000 - AF0;
+                wr32((APTR)0xf2200000, 0x10, tmp);
+                wr32((APTR)0xf2200000, 0x14, 0xfff); // 0xfff - AF3, 0x924 - AF0;
+#endif
               
-                /* Enable EMMC clock */
+                /* Enable EMMC/SDHOST clock */
                 SDCardBase->set_clock_state(1, 1, SDCardBase);
                                 
                 /* Initialize the card */

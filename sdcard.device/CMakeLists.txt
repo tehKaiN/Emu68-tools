@@ -13,6 +13,7 @@ add_executable(brcm-sdhc.device
     src/abortio.c
     src/mbox.c
     src/emmc.c
+    src/sdhost.c
     src/unit_task.c
 )
 

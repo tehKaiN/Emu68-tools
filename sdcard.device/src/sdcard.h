@@ -37,6 +37,7 @@ struct SDCardBase {
     APTR                sd_DeviceTreeBase;
     APTR                sd_MailBox;
     APTR                sd_SDHC;
+    APTR                sd_SDHOST;
     ULONG *             sd_Request;
     APTR                sd_RequestBase;
     ULONG               sd_SDHCClock;
@@ -97,6 +98,9 @@ struct SDCardBase {
     ULONG               sd_FailedVoltageSwitch;
     ULONG               sd_CardOCR;
     ULONG               sd_CardSupportsSDHC;
+
+    UBYTE               sd_InCommand;
+    UBYTE               sd_AppCommand;
 };
 
 struct SDCardUnit {
@@ -116,6 +120,8 @@ void UnitTask();
 
 #define UNIT_TASK_PRIORITY  10
 #define UNIT_TASK_STACKSIZE 1024
+
+#define USE_SDHOST      1
 
 #define BASE_NEG_SIZE   (6 * 6)
 #define BASE_POS_SIZE   (sizeof(struct SDCardBase))
@@ -156,7 +162,6 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase);
 #define EMMC_TUNE_STEPS_DDR	0x90
 #define EMMC_SPI_INT_SPT	0xF0
 #define EMMC_SLOTISR_VER	0xFC
-
 
 #define SD_CLOCK_ID         400000
 #define SD_CLOCK_NORMAL     25000000
