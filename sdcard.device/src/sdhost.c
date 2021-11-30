@@ -163,12 +163,14 @@ ULONG sdhost_getclock(struct SDCardBase *SDCardBase)
 
 void sdhost_led(int on, struct SDCardBase *SDCardBase)
 {
+    #if 0
     if (on) {
         SDCardBase->set_led_state(130, 0, SDCardBase);
     }
     else {
         SDCardBase->set_led_state(130, 1, SDCardBase);
     }
+    #endif
 }
 
 static void sdhost_dump_regs(struct SDCardBase *SDCardBase)
@@ -814,6 +816,30 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
         }
     }
 
+    // Get the CMD6 status register
+    SDCardBase->sd_Buffer = &SDCardBase->sd_StatusReg;
+    SDCardBase->sd_BlocksToTransfer = 1;
+    SDCardBase->sd_BlockSize = 64;
+
+    SDCardBase->sd_CMD(SWITCH_FUNC, 0, 500000, SDCardBase);
+    
+    if (SDCardBase->sd_StatusReg[13] & 2)
+    {
+        RawDoFmt("[brcm-sdhc] Card supports High Speed mode. Switching...\n", NULL, (APTR)putch, NULL);
+
+        SDCardBase->sd_Buffer = &SDCardBase->sd_StatusReg;
+        SDCardBase->sd_BlocksToTransfer = 1;
+        SDCardBase->sd_BlockSize = 64;
+
+        SDCardBase->sd_CMD(SWITCH_FUNC, 0x80fffff1, 500000, SDCardBase);
+
+        SDCardBase->sd_Delay(1000, SDCardBase);
+
+        sdhost_set_clock_rate(SD_CLOCK_HIGH, SDCardBase);
+    }
+
+    SDCardBase->sd_BlockSize = 512;
+
 	RawDoFmt("SD: found a valid version %ld SD card\n", &SDCardBase->sd_SCR.sd_version, (APTR)putch, NULL);
 
     return 0;
@@ -875,7 +901,8 @@ static int sdhost_ensure_data_mode(struct SDCardBase *SDCardBase)
 	// Check again that we're now in the correct mode
 	if(cur_state != 4)
 	{
-		RawDoFmt("SD: ensure_data_mode() rechecking status: ", NULL, (APTR)putch, NULL);
+
+		RawDoFmt("SD: ensure_data_mode() status was %ld, rechecking status: ", &cur_state, (APTR)putch, NULL);
         SDCardBase->sd_CMD(SEND_STATUS, SDCardBase->sd_CardRCA << 16, 500000, SDCardBase);
         if(FAIL(SDCardBase))
 		{
@@ -931,6 +958,8 @@ static int sdhost_do_data_command(int is_write, uint8_t *buf, uint32_t buf_size,
 	int command;
 	if(is_write)
 	{
+        SDCardBase->sd_CMD(SET_WR_BLK_ERASE_COUNT, SDCardBase->sd_BlocksToTransfer, 500000, SDCardBase);
+
 	    if(SDCardBase->sd_BlocksToTransfer > 1)
             command = WRITE_MULTIPLE_BLOCK;
         else
@@ -946,6 +975,7 @@ static int sdhost_do_data_command(int is_write, uint8_t *buf, uint32_t buf_size,
 
 	int retry_count = 0;
 	int max_retries = 5;
+
 	while(retry_count < max_retries)
 	{
         SDCardBase->sd_CMD(command, block_no, 5000000, SDCardBase);
