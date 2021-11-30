@@ -398,6 +398,9 @@ void sdhost_cmd_int(ULONG command, ULONG arg, ULONG timeout, struct SDCardBase *
 
     if (command & SD_CMD_ISDATA) {
         while(blocks--) {
+            if (rd32(sc, HC_HOSTSTATUS) & HC_HSTST_MASK_ERROR_ALL)
+                break;
+
             if (val2 & HC_CMD_READ) {
                 TIMEOUT_WAIT(rd32(sc, HC_HOSTSTATUS) & HC_HSTST_HAVEDATA, timeout);
                 wr32(sc, HC_HOSTSTATUS, rd32(sc, HC_HOSTSTATUS) & HC_HSTST_HAVEDATA);
