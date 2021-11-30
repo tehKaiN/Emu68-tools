@@ -30,6 +30,18 @@ static void putch(UBYTE data asm("d0"), APTR ignore asm("a3"))
     *(UBYTE*)0xdeadbeef = data;
 }
 
+#ifndef TD_READ64
+#define TD_READ64       24
+#endif
+
+#ifndef TD_WRITE64
+#define TD_WRITE64      25
+#endif
+
+#ifndef TD_FORMAT64
+#define TD_FORMAT64     27
+#endif
+
 static const ULONG quick = 
     (1 << TD_CHANGENUM)     |
     (1 << TD_GETDRIVETYPE)  |
@@ -54,9 +66,13 @@ const UWORD NSDSupported[] = {
         TD_REMCHANGEINT,
         TD_CHANGESTATE,
         TD_MOTOR,
+        TD_READ64,
+        TD_WRITE64,
+        TD_FORMAT64,
         NSCMD_DEVICEQUERY,
         NSCMD_TD_READ64,
         NSCMD_TD_WRITE64,
+        NSCMD_TD_FORMAT64,
         HD_SCSICMD,
         0
     };
@@ -92,31 +108,18 @@ static CONST_STRPTR const ManuID[] = {
 
 void int_handle_scsi(struct IOStdReq *io, struct SDCardBase * SDCardBase)
 {
+    struct IOStdReq *iostd = (struct IOStdReq *)io;
     struct SCSICmd *cmd = io->io_Data;
     struct SDCardUnit *unit = (struct SDCardUnit *)io->io_Unit;
     struct ExecBase *SysBase = unit->su_Base->sd_SysBase;
+    ULONG actual;
     ULONG blocks;
+    ULONG lba;
     UBYTE *data = (UBYTE *)cmd->scsi_Data;
     UBYTE *tmp1;
     UBYTE tmp2;
     UBYTE tmpbuf[8];
     UBYTE *ASCII = (UBYTE*)((ULONG)ASCII_Table + (ULONG)SDCardBase->sd_ROMBase);
-
-#if 0
-    {
-        ULONG args[] = {
-            (ULONG)unit->su_UnitNum,
-            (ULONG)cmd->scsi_Command[0],
-            (ULONG)cmd->scsi_Command[1],
-            (ULONG)cmd->scsi_Command[2],
-            (ULONG)cmd->scsi_Command[3],
-            (ULONG)cmd->scsi_Command[4],
-            (ULONG)cmd->scsi_Command[5],
-        };
-
-        RawDoFmt("[brcm-sdhc:%ld] HD_SCSICMD cmd=%02lx %02lx %02lx %02lx %02lx %02lx\n", args, (APTR)putch, NULL);
-    }
-#endif
 
     switch (cmd->scsi_Command[0])
     {
@@ -222,10 +225,123 @@ void int_handle_scsi(struct IOStdReq *io, struct SDCardBase * SDCardBase)
             io->io_Error = 0;
             break;
 
-        // Read (6)
-        // Write (6)
-        // Read (10)
-        // Write (10)
+        case 0x08: // READ (6)
+            lba = cmd->scsi_Command[1] & 0x1f;
+            lba = (lba << 8) | cmd->scsi_Command[2];
+            lba = (lba << 8) | cmd->scsi_Command[3];
+            blocks = cmd->scsi_Command[4];
+
+            if (lba >= unit->su_BlockCount || (lba + blocks) >= unit->su_BlockCount) {
+                io->io_Error = IOERR_BADADDRESS;
+                iostd->io_Actual = 0;
+            }
+            if (cmd->scsi_Length < blocks * 512) {
+                io->io_Error = IOERR_BADLENGTH;
+                iostd->io_Actual = 0;
+            }
+            else
+            {
+                actual = SDCardBase->sd_Read((APTR)cmd->scsi_Data, cmd->scsi_Length, unit->su_StartBlock + lba, SDCardBase);
+                if (actual < 0)
+                {
+                    io->io_Error = HFERR_BadStatus;
+                }
+                else
+                {
+                    io->io_Error = 0;
+                    cmd->scsi_Actual = actual;
+                }
+            }         
+            break;
+
+        case 0x28: // READ (10)
+            lba = cmd->scsi_Command[2];
+            lba = (lba << 8) | cmd->scsi_Command[3];
+            lba = (lba << 8) | cmd->scsi_Command[4];
+            lba = (lba << 8) | cmd->scsi_Command[5];
+            blocks =(cmd->scsi_Command[7] << 8) | cmd->scsi_Command[8];
+
+            if (lba >= unit->su_BlockCount || (lba + blocks) >= unit->su_BlockCount) {
+                io->io_Error = IOERR_BADADDRESS;
+                iostd->io_Actual = 0;
+            }
+            if (cmd->scsi_Length < blocks * 512) {
+                io->io_Error = IOERR_BADLENGTH;
+                iostd->io_Actual = 0;
+            }
+            else
+            {
+                actual = SDCardBase->sd_Read((APTR)cmd->scsi_Data, cmd->scsi_Length, unit->su_StartBlock + lba, SDCardBase);
+                if (actual < 0)
+                {
+                    io->io_Error = HFERR_BadStatus;
+                }
+                else
+                {
+                    io->io_Error = 0;
+                    cmd->scsi_Actual = actual;
+                }
+            }         
+            break;
+
+        case 0x0a: // WRITE (6)
+            lba = cmd->scsi_Command[1] & 0x1f;
+            lba = (lba << 8) | cmd->scsi_Command[2];
+            lba = (lba << 8) | cmd->scsi_Command[3];
+            blocks = cmd->scsi_Command[4];
+
+            if (lba >= unit->su_BlockCount || (lba + blocks) >= unit->su_BlockCount) {
+                io->io_Error = IOERR_BADADDRESS;
+                iostd->io_Actual = 0;
+            }
+            if (cmd->scsi_Length < blocks * 512) {
+                io->io_Error = IOERR_BADLENGTH;
+                iostd->io_Actual = 0;
+            }
+            else
+            {
+                actual = SDCardBase->sd_Write((APTR)cmd->scsi_Data, cmd->scsi_Length, unit->su_StartBlock + lba, SDCardBase);
+                if (actual < 0)
+                {
+                    io->io_Error = HFERR_BadStatus;
+                }
+                else
+                {
+                    io->io_Error = 0;
+                    cmd->scsi_Actual = actual;
+                }
+            }         
+            break;
+        
+        case 0x2a: // WRITE (10)
+            lba = cmd->scsi_Command[2];
+            lba = (lba << 8) | cmd->scsi_Command[3];
+            lba = (lba << 8) | cmd->scsi_Command[4];
+            lba = (lba << 8) | cmd->scsi_Command[5];
+            blocks =(cmd->scsi_Command[7] << 8) | cmd->scsi_Command[8];
+
+            if (lba >= unit->su_BlockCount || (lba + blocks) >= unit->su_BlockCount) {
+                io->io_Error = IOERR_BADADDRESS;
+                iostd->io_Actual = 0;
+            }
+            if (cmd->scsi_Length < blocks * 512) {
+                io->io_Error = IOERR_BADLENGTH;
+                iostd->io_Actual = 0;
+            }
+            else
+            {
+                actual = SDCardBase->sd_Write((APTR)cmd->scsi_Data, cmd->scsi_Length, unit->su_StartBlock + lba, SDCardBase);
+                if (actual < 0)
+                {
+                    io->io_Error = HFERR_BadStatus;
+                }
+                else
+                {
+                    io->io_Error = 0;
+                    cmd->scsi_Actual = actual;
+                }
+            }         
+            break;       
 
         case 0x25: // READ_CAPACITY (10)
             if (cmd->scsi_CmdLength < 10)
@@ -438,6 +554,7 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase)
             }         
             break;
         
+        case TD_READ64: // Fallthrough
         case NSCMD_TD_READ64:
             off64 = iostd->io_Offset;
             off64 |= ((unsigned long long)iostd->io_Actual) << 32;
@@ -461,6 +578,7 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase)
             }         
             break;
         
+        case TD_FORMAT: // Fallthrough
         case CMD_WRITE:
             offset = iostd->io_Offset / SDCardBase->sd_BlockSize;
 
@@ -482,6 +600,9 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase)
             }         
             break;
 
+        case TD_FORMAT64: // Fallthrough
+        case TD_WRITE64: // Fallthrough
+        case NSCMD_TD_FORMAT64: // Fallthrough
         case NSCMD_TD_WRITE64:
             off64 = iostd->io_Offset;
             off64 |= ((unsigned long long)iostd->io_Actual) << 32;
