@@ -86,6 +86,7 @@ struct SDCardBase {
     ULONG               sd_Res3;
 
     ULONG               sd_CID[4];
+    UBYTE               sd_StatusReg[64];
 
     ULONG               sd_Capabilities0;
     ULONG               sd_Capabilities1;
@@ -279,7 +280,7 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase);
 #define CMD_3               (SD_CMD_INDEX(3) | SD_RESP_R6)
 #define CMD_4               (SD_CMD_INDEX(4))
 #define CMD_5               (SD_CMD_INDEX(5) | SD_RESP_R4)
-#define CMD_6               (SD_CMD_INDEX(6) | SD_RESP_R1)
+#define CMD_6               (SD_CMD_INDEX(6) | SD_RESP_R1 | SD_DATA_READ)
 #define CMD_7               (SD_CMD_INDEX(7) | SD_RESP_R1b)
 #define CMD_7nr             (SD_CMD_INDEX(7))
 #define CMD_8               (SD_CMD_INDEX(8) | SD_RESP_R7)
