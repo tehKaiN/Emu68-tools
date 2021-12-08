@@ -50,6 +50,9 @@ struct VC4Base {
     int                     vc4_ActivePlane;
     int                     vc4_FreePlane;
 
+    ULONG                   vc4_Scaler;
+    UBYTE                   vc4_Phase;
+
     struct {
         APTR        lp_Addr;
         UWORD       lp_Width;

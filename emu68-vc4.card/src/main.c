@@ -250,7 +250,15 @@ static int FindCard(struct BoardInfo* bi asm("a0"), struct VC4Base *VC4Base asm(
     return 1;
 }
 
-static int InitCard(struct BoardInfo* bi asm("a0"), struct VC4Base *VC4Base asm("a6"))
+int _strcmp(const char *s1, const char *s2)
+{
+    while (*s1 == *s2++)
+        if (*s1++ == '\0')
+            return (0);
+    return (*(const unsigned char *)s1 - *(const unsigned char *)(s2 - 1));
+}
+
+static int InitCard(struct BoardInfo* bi asm("a0"), const char **ToolTypes asm("a1"), struct VC4Base *VC4Base asm("a6"))
 {
     struct ExecBase *SysBase = VC4Base->vc4_SysBase;
 
@@ -301,6 +309,51 @@ static int InitCard(struct BoardInfo* bi asm("a0"), struct VC4Base *VC4Base asm(
     bi->SetReadPlane = (void *)SetReadPlane;
 
     bi->WaitVerticalSync = (void *)WaitVerticalSync;
+
+    for (;ToolTypes[0] != NULL; ToolTypes++)
+    {
+        const char *tt = ToolTypes[0];
+        ULONG args[] = {
+            (ULONG)tt
+        };
+        RawDoFmt("[vc4] Checking ToolType `%s`\n", args, (APTR)putch, NULL);
+
+        if (_strcmp(tt, "VC4_PHASE") == '=')
+        {
+            const char *c = &tt[10];
+            ULONG num = 0;
+
+            while (*c) {
+                if (*c < '0' || *c > '9')
+                    break;
+                
+                num = num * 10 + (*c++ - '0');
+            }
+
+            VC4Base->vc4_Phase = num;
+            args[0] = VC4Base->vc4_Phase;
+            RawDoFmt("[vc4] Setting VC4 phase to %ld\n", args, (APTR)putch, NULL);
+        }
+        else if (_strcmp(tt, "VC4_SCALER") == '=')
+        {
+            switch(tt[11]) {
+                case '0':
+                    VC4Base->vc4_Scaler = 0x00000000;
+                    break;
+                case '1':
+                    VC4Base->vc4_Scaler = 0x40000000;
+                    break;
+                case '2':
+                    VC4Base->vc4_Scaler = 0x80000000;
+                    break;
+                case '3':
+                    VC4Base->vc4_Scaler = 0xc0000000;
+                    break;
+            }
+            args[0] = VC4Base->vc4_Scaler;
+            RawDoFmt("[vc4] Setting VC4 scaler to %lx\n", args, (APTR)putch, NULL);
+        }
+    }
 
     // Additional functions for "blitter" acceleration and vblank handling
     //bi->SetInterrupt = (void *)NULL;
@@ -721,7 +774,7 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
             displist[pos + 8] = LE32(0xc0000000 | (0x300 << 2));
 
             displist[pos + 9] = LE32(0);
-            displist[pos + 10] = LE32(0x40000060 | (scale << 8));
+            displist[pos + 10] = LE32((scale << 8) | VC4Base->vc4_Scaler | VC4Base->vc4_Phase);
             displist[pos + 11] = displist[pos + 10];
             displist[pos + 12] = LE32(0);
 
