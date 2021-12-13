@@ -100,8 +100,11 @@ struct SDCardBase {
     ULONG               sd_CardOCR;
     ULONG               sd_CardSupportsSDHC;
 
+    UBYTE               sd_DisableHighSpeed;
     UBYTE               sd_InCommand;
     UBYTE               sd_AppCommand;
+    UBYTE               sd_HideUnit0;
+    UBYTE               sd_ReadOnlyUnit0;
 };
 
 struct SDCardUnit {
@@ -110,6 +113,7 @@ struct SDCardUnit {
     uint32_t            su_StartBlock;
     uint32_t            su_BlockCount;
     uint8_t             su_UnitNum;
+    uint8_t             su_ReadOnly;
     struct Task *       su_Caller;
 };
 

@@ -93,7 +93,7 @@ void SD_Open(struct IORequest * io asm("a1"), LONG unitNumber asm("d0"),
     io->io_Error = 0;
 
     /* Do not continue if unit number does not fit */
-    if (unitNumber >= SDCardBase->sd_UnitCount) {
+    if (unitNumber >= SDCardBase->sd_UnitCount || (unitNumber == 0 && SDCardBase->sd_HideUnit0)) {
         io->io_Error = TDERR_BadUnitNum;
     }
 
@@ -194,6 +194,52 @@ void delay(ULONG us, struct SDCardBase *SDCardBase)
 
     DoIO((struct IORequest *)&SDCardBase->sd_TimeReq);
 #endif
+}
+
+CONST_STRPTR FindToken(CONST_STRPTR string, CONST_STRPTR token)
+{
+    CONST_STRPTR ret = NULL;
+
+    if (string)
+    {
+        do {
+            while (*string == ' ' || *string == '\t') {
+                string++;
+            }
+
+            if (*string == 0)
+                break;
+
+            for (int i=0; token[i] != 0; i++)
+            {
+                if (string[i] != token[i])
+                {
+                    break;
+                }
+
+                if (token[i] == '=') {
+                    ret = string;
+                    break;
+                }
+
+                if (string[i+1] == 0 || string[i+1] == ' ' || string[i+1] == '\t') {
+                    ret = string;
+                    break;
+                }
+            }
+
+            if (ret)
+                break;
+
+            while(*string != 0) {
+                if (*string != ' ' && *string != '\t')
+                    string++;
+                else break;
+            }
+
+        } while(!ret && *string != 0);
+    }
+    return ret;
 }
 
 APTR Init(struct ExecBase *SysBase asm("a6"))
@@ -297,6 +343,35 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
             SumLibrary((struct Library*)SDCardBase);
 
             RawDoFmt("[brcm-sdhc] DeviceBase at %08lx\n", &SDCardBase, (APTR)putch, NULL);
+
+            const char *cmdline = DT_GetPropValue(DT_FindProperty(DT_OpenKey("/chosen"), "bootargs"));
+            const char *cmd;
+
+            SDCardBase->sd_HideUnit0 = 0;
+            SDCardBase->sd_ReadOnlyUnit0 = 1;
+
+            if ((cmd = FindToken(cmdline, "sd.unit0=")))
+            {
+                if (cmd[9] == 'r' && cmd[10] == 'o' && (cmd[11] == 0 || cmd[11] == ' ')) {
+                    SDCardBase->sd_ReadOnlyUnit0 = 1;
+                    SDCardBase->sd_HideUnit0 = 0;
+                }
+                else if (cmd[9] == 'r' && cmd[10] == 'w' && (cmd[11] == 0 || cmd[11] == ' ')) {
+                    SDCardBase->sd_ReadOnlyUnit0 = 0;
+                    SDCardBase->sd_HideUnit0 = 0;
+                }
+                else if (cmd[9] == 'o' && cmd[10] == 'f' && cmd[11] == 'f' && (cmd[12] == 0 || cmd[12] == ' ')) {
+                    SDCardBase->sd_HideUnit0 = 1;
+                }
+
+            }
+
+            if (FindToken(cmdline, "sd_low_speed_only"))
+            {
+                RawDoFmt("[brcm-sdhc] 50MHz mode disabled per command line\n", NULL, (APTR)putch, NULL);
+
+                SDCardBase->sd_DisableHighSpeed = 1;
+            }
 
             /* Get VC4 physical address of mailbox interface. Subsequently it will be translated to m68k physical address */
             key = DT_OpenKey("/aliases");
@@ -518,6 +593,9 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                     /* Initialization is complete. Create all tasks for the units now */
                     for (int unit = 0; unit < SDCardBase->sd_UnitCount; unit++)
                     {
+                        if (unit == 0 && SDCardBase->sd_HideUnit0)
+                            continue;
+
                         APTR entry = (APTR)((ULONG)UnitTask + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);;
                         struct Task *task = AllocMem(sizeof(struct Task), MEMF_PUBLIC | MEMF_CLEAR);
                         struct MemList *ml = AllocMem(sizeof(struct MemList) + 2*sizeof(struct MemEntry), MEMF_PUBLIC | MEMF_CLEAR);
@@ -551,6 +629,9 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                         AddHead(&task->tc_MemEntry, &ml->ml_Node);
 
                         SDCardBase->sd_Units[unit]->su_Caller = FindTask(NULL);
+
+                        if (unit == 0 && SDCardBase->sd_ReadOnlyUnit0)
+                            SDCardBase->sd_Units[unit]->su_ReadOnly = 1;
 
                         AddTask(task, entry, NULL);
                         Wait(SIGBREAKF_CTRL_C);

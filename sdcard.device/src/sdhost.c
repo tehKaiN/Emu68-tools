@@ -826,7 +826,7 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
 
     SDCardBase->sd_CMD(SWITCH_FUNC, 0, 500000, SDCardBase);
     
-    if (SDCardBase->sd_StatusReg[13] & 2)
+    if (SDCardBase->sd_DisableHighSpeed == 0 && SDCardBase->sd_StatusReg[13] & 2)
     {
         RawDoFmt("[brcm-sdhc] Card supports High Speed mode. Switching...\n", NULL, (APTR)putch, NULL);
 

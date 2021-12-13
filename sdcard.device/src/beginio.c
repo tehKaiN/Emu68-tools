@@ -285,62 +285,74 @@ void int_handle_scsi(struct IOStdReq *io, struct SDCardBase * SDCardBase)
             break;
 
         case 0x0a: // WRITE (6)
-            lba = cmd->scsi_Command[1] & 0x1f;
-            lba = (lba << 8) | cmd->scsi_Command[2];
-            lba = (lba << 8) | cmd->scsi_Command[3];
-            blocks = cmd->scsi_Command[4];
+            if (unit->su_ReadOnly) {
+                io->io_Error = TDERR_WriteProt;
+                iostd->io_Actual = 0;
+            }
+            else {
+                lba = cmd->scsi_Command[1] & 0x1f;
+                lba = (lba << 8) | cmd->scsi_Command[2];
+                lba = (lba << 8) | cmd->scsi_Command[3];
+                blocks = cmd->scsi_Command[4];
 
-            if (lba >= unit->su_BlockCount || (lba + blocks) >= unit->su_BlockCount) {
-                io->io_Error = IOERR_BADADDRESS;
-                iostd->io_Actual = 0;
-            }
-            if (cmd->scsi_Length < blocks * 512) {
-                io->io_Error = IOERR_BADLENGTH;
-                iostd->io_Actual = 0;
-            }
-            else
-            {
-                actual = SDCardBase->sd_Write((APTR)cmd->scsi_Data, cmd->scsi_Length, unit->su_StartBlock + lba, SDCardBase);
-                if (actual < 0)
-                {
-                    io->io_Error = HFERR_BadStatus;
+                if (lba >= unit->su_BlockCount || (lba + blocks) >= unit->su_BlockCount) {
+                    io->io_Error = IOERR_BADADDRESS;
+                    iostd->io_Actual = 0;
+                }
+                if (cmd->scsi_Length < blocks * 512) {
+                    io->io_Error = IOERR_BADLENGTH;
+                    iostd->io_Actual = 0;
                 }
                 else
                 {
-                    io->io_Error = 0;
-                    cmd->scsi_Actual = actual;
-                }
-            }         
+                    actual = SDCardBase->sd_Write((APTR)cmd->scsi_Data, cmd->scsi_Length, unit->su_StartBlock + lba, SDCardBase);
+                    if (actual < 0)
+                    {
+                        io->io_Error = HFERR_BadStatus;
+                    }
+                    else
+                    {
+                        io->io_Error = 0;
+                        cmd->scsi_Actual = actual;
+                    }
+                }         
+            }
             break;
         
         case 0x2a: // WRITE (10)
-            lba = cmd->scsi_Command[2];
-            lba = (lba << 8) | cmd->scsi_Command[3];
-            lba = (lba << 8) | cmd->scsi_Command[4];
-            lba = (lba << 8) | cmd->scsi_Command[5];
-            blocks =(cmd->scsi_Command[7] << 8) | cmd->scsi_Command[8];
+            if (unit->su_ReadOnly) {
+                io->io_Error = TDERR_WriteProt;
+                iostd->io_Actual = 0;
+            }
+            else {
+                lba = cmd->scsi_Command[2];
+                lba = (lba << 8) | cmd->scsi_Command[3];
+                lba = (lba << 8) | cmd->scsi_Command[4];
+                lba = (lba << 8) | cmd->scsi_Command[5];
+                blocks =(cmd->scsi_Command[7] << 8) | cmd->scsi_Command[8];
 
-            if (lba >= unit->su_BlockCount || (lba + blocks) >= unit->su_BlockCount) {
-                io->io_Error = IOERR_BADADDRESS;
-                iostd->io_Actual = 0;
-            }
-            if (cmd->scsi_Length < blocks * 512) {
-                io->io_Error = IOERR_BADLENGTH;
-                iostd->io_Actual = 0;
-            }
-            else
-            {
-                actual = SDCardBase->sd_Write((APTR)cmd->scsi_Data, cmd->scsi_Length, unit->su_StartBlock + lba, SDCardBase);
-                if (actual < 0)
-                {
-                    io->io_Error = HFERR_BadStatus;
+                if (lba >= unit->su_BlockCount || (lba + blocks) >= unit->su_BlockCount) {
+                    io->io_Error = IOERR_BADADDRESS;
+                    iostd->io_Actual = 0;
+                }
+                if (cmd->scsi_Length < blocks * 512) {
+                    io->io_Error = IOERR_BADLENGTH;
+                    iostd->io_Actual = 0;
                 }
                 else
                 {
-                    io->io_Error = 0;
-                    cmd->scsi_Actual = actual;
-                }
-            }         
+                    actual = SDCardBase->sd_Write((APTR)cmd->scsi_Data, cmd->scsi_Length, unit->su_StartBlock + lba, SDCardBase);
+                    if (actual < 0)
+                    {
+                        io->io_Error = HFERR_BadStatus;
+                    }
+                    else
+                    {
+                        io->io_Error = 0;
+                        cmd->scsi_Actual = actual;
+                    }
+                }         
+            }
             break;       
 
         case 0x25: // READ_CAPACITY (10)
@@ -491,7 +503,7 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase)
             break;
 
         case TD_PROTSTATUS:
-            iostd->io_Actual = 0;
+            iostd->io_Actual = unit->su_ReadOnly;
             break;
 
         case TD_CHANGENUM:
@@ -580,50 +592,62 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase)
         
         case TD_FORMAT: // Fallthrough
         case CMD_WRITE:
-            offset = iostd->io_Offset / SDCardBase->sd_BlockSize;
-
-            if (offset >= unit->su_BlockCount || (offset + iostd->io_Length / SDCardBase->sd_BlockSize) >= unit->su_BlockCount) {
-                io->io_Error = IOERR_BADADDRESS;
+            if (unit->su_ReadOnly) {
+                io->io_Error = TDERR_WriteProt;
                 iostd->io_Actual = 0;
             }
-            else
-            {
-                actual = SDCardBase->sd_Write(iostd->io_Data, iostd->io_Length, startblock + offset, SDCardBase);
-                if (actual < 0)
-                {
-                    io->io_Error = TDERR_NotSpecified;
+            else {
+                offset = iostd->io_Offset / SDCardBase->sd_BlockSize;
+
+                if (offset >= unit->su_BlockCount || (offset + iostd->io_Length / SDCardBase->sd_BlockSize) >= unit->su_BlockCount) {
+                    io->io_Error = IOERR_BADADDRESS;
+                    iostd->io_Actual = 0;
                 }
                 else
                 {
-                    iostd->io_Actual = actual;
-                }
-            }         
+                    actual = SDCardBase->sd_Write(iostd->io_Data, iostd->io_Length, startblock + offset, SDCardBase);
+                    if (actual < 0)
+                    {
+                        io->io_Error = TDERR_NotSpecified;
+                    }
+                    else
+                    {
+                        iostd->io_Actual = actual;
+                    }
+                }         
+            }
             break;
 
         case TD_FORMAT64: // Fallthrough
         case TD_WRITE64: // Fallthrough
         case NSCMD_TD_FORMAT64: // Fallthrough
         case NSCMD_TD_WRITE64:
-            off64 = iostd->io_Offset;
-            off64 |= ((unsigned long long)iostd->io_Actual) << 32;
-            offset = off64 >> 9;
-
-            if (offset >= unit->su_BlockCount || (offset + iostd->io_Length / SDCardBase->sd_BlockSize) >= unit->su_BlockCount) {
-                io->io_Error = IOERR_BADADDRESS;
+            if (unit->su_ReadOnly) {
+                io->io_Error = TDERR_WriteProt;
                 iostd->io_Actual = 0;
             }
-            else
-            {
-                actual = SDCardBase->sd_Write(iostd->io_Data, iostd->io_Length, startblock + offset, SDCardBase);
-                if (actual < 0)
-                {
-                    io->io_Error = TDERR_NotSpecified;
+            else {
+                off64 = iostd->io_Offset;
+                off64 |= ((unsigned long long)iostd->io_Actual) << 32;
+                offset = off64 >> 9;
+
+                if (offset >= unit->su_BlockCount || (offset + iostd->io_Length / SDCardBase->sd_BlockSize) >= unit->su_BlockCount) {
+                    io->io_Error = IOERR_BADADDRESS;
+                    iostd->io_Actual = 0;
                 }
                 else
                 {
-                    iostd->io_Actual = actual;
-                }
-            }         
+                    actual = SDCardBase->sd_Write(iostd->io_Data, iostd->io_Length, startblock + offset, SDCardBase);
+                    if (actual < 0)
+                    {
+                        io->io_Error = TDERR_NotSpecified;
+                    }
+                    else
+                    {
+                        iostd->io_Actual = actual;
+                    }
+                }         
+            }
             break;
         
         case HD_SCSICMD:
