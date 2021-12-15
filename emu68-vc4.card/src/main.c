@@ -380,7 +380,7 @@ static int InitCard(struct BoardInfo* bi asm("a0"), const char **ToolTypes asm("
     //bi->ReInitMemory = (void *)NULL;
     //bi->WriteYUVRect = (void *)NULL;
     //bi->GetVSyncState = (void *)GetVSyncState;
-    //bi->GetVBeamPos = (void *)NULL;
+    bi->GetVBeamPos = (void *)GetVBeamPos;
     //bi->SetDPMSLevel = (void *)NULL;
     //bi->ResetChip = (void *)NULL;
     //bi->GetFeatureAttrs = (void *)NULL;
@@ -942,14 +942,22 @@ void SetClearMask (__REGA0(struct BoardInfo *b), __REGD0(UBYTE mask)) {
 void SetReadPlane (__REGA0(struct BoardInfo *b), __REGD0(UBYTE plane)) {
 }
 
+ULONG GetVBeamPos(struct BoardInfo *b asm("a0"))
+{
+    volatile ULONG *stat = (ULONG*)(0xf2400000 + SCALER_DISPSTAT1);
+    ULONG vbeampos = LE32(*stat) & 0xfff;
+
+    return vbeampos;
+}
+
 void WaitVerticalSync (__REGA0(struct BoardInfo *b), __REGD0(BOOL toggle)) {
 
     volatile ULONG *stat = (ULONG*)(0xf2400000 + SCALER_DISPSTAT1);
-    ULONG cnt1 = (LE32(*stat) >> 12) & 0x3f;
+    ULONG vbeampos = LE32(*stat) & 0xfff;
 
-    do {} while(((LE32(*stat) >> 12) & 0x3f) == cnt1);
+    // Wait until current vbeampos is lower than the one obtained above
+    do { asm volatile("nop"); } while((LE32(*stat) & 0xfff) >= vbeampos);
 }
-
 
 #if 0
 

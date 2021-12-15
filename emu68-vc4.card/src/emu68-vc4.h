@@ -95,6 +95,7 @@ void SetSprite (__REGA0(struct BoardInfo *b), __REGD0(BOOL enable), __REGD7(RGBF
 void SetSpritePosition (__REGA0(struct BoardInfo *b), __REGD0(WORD x), __REGD1(WORD y), __REGD7(RGBFTYPE format));
 void SetSpriteImage (__REGA0(struct BoardInfo *b), __REGD7(RGBFTYPE format));
 void SetSpriteColor (__REGA0(struct BoardInfo *b), __REGD0(UBYTE idx), __REGD1(UBYTE R), __REGD2(UBYTE G), __REGD3(UBYTE B), __REGD7(RGBFTYPE format));
+ULONG GetVBeamPos(struct BoardInfo *b asm("a0"));
 
 /* Endian support */
 
