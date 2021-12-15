@@ -113,4 +113,6 @@ struct fdt_prop_entry {
 
 #define FDT_MAGIC       0xd00dfeed
 
+void Add_DT_Memory(struct ExecBase *SysBase, APTR DeviceTreeBase);
+
 #endif /* __DEVICETREE_H */

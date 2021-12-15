@@ -20,6 +20,7 @@ add_executable(devicetree.resource
     src/getchild.c
     src/getproperty.c
     src/getparent.c
+    src/addram.c
 )
 
 target_include_directories(devicetree.resource PRIVATE include)
