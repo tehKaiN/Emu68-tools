@@ -366,11 +366,30 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
 
             }
 
-            if (FindToken(cmdline, "sd_low_speed_only"))
+            if (FindToken(cmdline, "sd.low_speed"))
             {
                 RawDoFmt("[brcm-sdhc] 50MHz mode disabled per command line\n", NULL, (APTR)putch, NULL);
 
                 SDCardBase->sd_DisableHighSpeed = 1;
+            }
+
+            if ((cmd = FindToken(cmdline, "sd.clock=")))
+            {
+                ULONG clock = 0;
+
+                for (int i=0; i < 3; i++)
+                {
+                    if (cmd[9 + i] < '0' || cmd[9 + i] > '9')
+                        break;
+
+                    clock = clock * 10 + cmd[9 + i] - '0';
+                }
+
+                if (clock > 0 && clock < 200)
+                {
+                    RawDoFmt("[brcm-sdhc] Overclocking to %ld MHz requested\n", &clock, (APTR)putch, NULL);
+                    SDCardBase->sd_Overclock = 1000000 * clock;
+                }
             }
 
             /* Get VC4 physical address of mailbox interface. Subsequently it will be translated to m68k physical address */
