@@ -157,9 +157,12 @@ ULONG sdhost_getclock(struct SDCardBase *SDCardBase)
 {
     struct ExecBase *SysBase = SDCardBase->sd_SysBase;
 
-    ULONG clock = SDCardBase->get_clock_rate(4, SDCardBase);
-    if (clock == 0)
-        clock = 400000000;
+    ULONG clock = 0;
+    
+    do
+    {
+        clock = SDCardBase->get_clock_rate(4, SDCardBase);
+    } while (clock == 0);
 
     ULONG args[] = {
         clock,
