@@ -99,6 +99,7 @@ struct SDCardBase {
     ULONG               sd_FailedVoltageSwitch;
     ULONG               sd_CardOCR;
     ULONG               sd_CardSupportsSDHC;
+    ULONG               sd_Overclock;
 
     UBYTE               sd_DisableHighSpeed;
     UBYTE               sd_InCommand;

@@ -155,9 +155,18 @@ static void putch(UBYTE data asm("d0"), APTR ignore asm("a3"))
 
 ULONG sdhost_getclock(struct SDCardBase *SDCardBase)
 {
-    ULONG clock = SDCardBase->get_clock_rate(1, SDCardBase);
+    struct ExecBase *SysBase = SDCardBase->sd_SysBase;
+
+    ULONG clock = SDCardBase->get_clock_rate(4, SDCardBase);
     if (clock == 0)
-        clock = 200000000;
+        clock = 400000000;
+
+    ULONG args[] = {
+        clock,
+    };
+
+    RawDoFmt("[brcm-sdhc] sdhost_getclock returns %ld\n", args, (APTR)putch, NULL);
+
     return clock;
 }
 
@@ -283,7 +292,14 @@ static void sdhost_set_clock_rate(ULONG freq, struct SDCardBase *SDCardBase)
         if (divider > HC_CLOCKDIVISOR_MAXVAL)
             divider = HC_CLOCKDIVISOR_MAXVAL;
     }
+
+    ULONG args[] = {
+        freq,
+        clock / (divider + 2)
+    };
     
+    RawDoFmt("[brcm-sdhc] Requested clock %ld Hz, activated clock %ld Hz\n", args, (APTR)putch, NULL);
+
     wr32(sc, HC_CLOCKDIVISOR, divider);
 }
 
@@ -838,7 +854,10 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
 
         SDCardBase->sd_Delay(1000, SDCardBase);
 
-        sdhost_set_clock_rate(SD_CLOCK_HIGH, SDCardBase);
+        if (SDCardBase->sd_Overclock != 0)
+            sdhost_set_clock_rate(SDCardBase->sd_Overclock, SDCardBase);
+        else
+            sdhost_set_clock_rate(SD_CLOCK_HIGH, SDCardBase);
     }
 
     SDCardBase->sd_BlockSize = 512;
@@ -979,12 +998,14 @@ static int sdhost_do_data_command(int is_write, uint8_t *buf, uint32_t buf_size,
 	int retry_count = 0;
 	int max_retries = 5;
 
-	while(retry_count < max_retries)
+	for (retry_count = 0; retry_count < max_retries; retry_count++)
 	{
         SDCardBase->sd_CMD(command, block_no, 5000000, SDCardBase);
 
         if(SUCCESS(SDCardBase))
+        {
             break;
+        }
         else
         {
             // In the data transfer state - cancel the transmission
@@ -1006,6 +1027,7 @@ static int sdhost_do_data_command(int is_write, uint8_t *buf, uint32_t buf_size,
             */
         }
 	}
+
 	if(retry_count == max_retries)
     {
         SDCardBase->sd_CardRCA = 0;
