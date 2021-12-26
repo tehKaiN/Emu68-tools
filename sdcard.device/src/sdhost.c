@@ -162,7 +162,8 @@ ULONG sdhost_getclock(struct SDCardBase *SDCardBase)
         clock,
     };
 
-    RawDoFmt("[brcm-sdhc] sdhost_getclock returns %ld\n", args, (APTR)putch, NULL);
+    if (SDCardBase->sd_Verbose)
+        RawDoFmt("[brcm-sdhc] sdhost_getclock returns %ld\n", args, (APTR)putch, NULL);
 
     return clock;
 }
@@ -184,38 +185,40 @@ static void sdhost_dump_regs(struct SDCardBase *SDCardBase)
     APTR sc = SDCardBase->sd_SDHOST;
     struct ExecBase *SysBase = SDCardBase->sd_SysBase;
 
-    ULONG args[] = {
-        rd32(sc, HC_COMMAND),
-        rd32(sc, HC_ARGUMENT),
-        rd32(sc, HC_TIMEOUTCOUNTER),
-        rd32(sc, HC_CLOCKDIVISOR),
-        rd32(sc, HC_RESPONSE_0),
-        rd32(sc, HC_RESPONSE_1),
-        rd32(sc, HC_RESPONSE_2),
-        rd32(sc, HC_RESPONSE_3),
-        rd32(sc, HC_HOSTSTATUS),
-        rd32(sc, HC_POWER),
-        rd32(sc, HC_DEBUG),
-        rd32(sc, HC_HOSTCONFIG),
-        rd32(sc, HC_BLOCKSIZE),
-        rd32(sc, HC_BLOCKCOUNT)
-    };
+    if (SDCardBase->sd_Verbose) {
+        ULONG args[] = {
+            rd32(sc, HC_COMMAND),
+            rd32(sc, HC_ARGUMENT),
+            rd32(sc, HC_TIMEOUTCOUNTER),
+            rd32(sc, HC_CLOCKDIVISOR),
+            rd32(sc, HC_RESPONSE_0),
+            rd32(sc, HC_RESPONSE_1),
+            rd32(sc, HC_RESPONSE_2),
+            rd32(sc, HC_RESPONSE_3),
+            rd32(sc, HC_HOSTSTATUS),
+            rd32(sc, HC_POWER),
+            rd32(sc, HC_DEBUG),
+            rd32(sc, HC_HOSTCONFIG),
+            rd32(sc, HC_BLOCKSIZE),
+            rd32(sc, HC_BLOCKCOUNT)
+        };
 
-    RawDoFmt("[brcm-sdhc] SDHOST reg dump\n"
-             "[brcm-sdhc]    HC_COMMAND:        0x%08lx\n"
-             "[brcm-sdhc]    HC_ARGUMENT:       0x%08lx\n"
-             "[brcm-sdhc]    HC_TIMEOUTCOUNTER: 0x%08lx\n"
-             "[brcm-sdhc]    HC_CLOCKDIVISOR:   0x%08lx\n"
-             "[brcm-sdhc]    HC_RESPONSE_0:     0x%08lx\n"
-             "[brcm-sdhc]    HC_RESPONSE_1:     0x%08lx\n"
-             "[brcm-sdhc]    HC_RESPONSE_2:     0x%08lx\n"
-             "[brcm-sdhc]    HC_RESPONSE_3:     0x%08lx\n"
-             "[brcm-sdhc]    HC_HOSTSTATUS:     0x%08lx\n"
-             "[brcm-sdhc]    HC_POWER:          0x%08lx\n"
-             "[brcm-sdhc]    HC_DEBUG:          0x%08lx\n"
-             "[brcm-sdhc]    HC_HOSTCONFIG:     0x%08lx\n"
-             "[brcm-sdhc]    HC_BLOCKSIZE:      0x%08lx\n"
-             "[brcm-sdhc]    HC_BLOCKCOUNT:     0x%08lx\n", args, (APTR)putch, NULL);
+        RawDoFmt("[brcm-sdhc] SDHOST reg dump\n"
+                "[brcm-sdhc]    HC_COMMAND:        0x%08lx\n"
+                "[brcm-sdhc]    HC_ARGUMENT:       0x%08lx\n"
+                "[brcm-sdhc]    HC_TIMEOUTCOUNTER: 0x%08lx\n"
+                "[brcm-sdhc]    HC_CLOCKDIVISOR:   0x%08lx\n"
+                "[brcm-sdhc]    HC_RESPONSE_0:     0x%08lx\n"
+                "[brcm-sdhc]    HC_RESPONSE_1:     0x%08lx\n"
+                "[brcm-sdhc]    HC_RESPONSE_2:     0x%08lx\n"
+                "[brcm-sdhc]    HC_RESPONSE_3:     0x%08lx\n"
+                "[brcm-sdhc]    HC_HOSTSTATUS:     0x%08lx\n"
+                "[brcm-sdhc]    HC_POWER:          0x%08lx\n"
+                "[brcm-sdhc]    HC_DEBUG:          0x%08lx\n"
+                "[brcm-sdhc]    HC_HOSTCONFIG:     0x%08lx\n"
+                "[brcm-sdhc]    HC_BLOCKSIZE:      0x%08lx\n"
+                "[brcm-sdhc]    HC_BLOCKCOUNT:     0x%08lx\n", args, (APTR)putch, NULL);
+    }
 }
 
 static void sdhost_reset(struct SDCardBase *SDCardBase)
@@ -224,7 +227,8 @@ static void sdhost_reset(struct SDCardBase *SDCardBase)
     struct ExecBase *SysBase = SDCardBase->sd_SysBase;
     uint32_t dbg;
 
-    RawDoFmt("[brcm-sdhc] SDHOST Reset\n", NULL, (APTR)putch, NULL);
+    if (SDCardBase->sd_Verbose)
+        RawDoFmt("[brcm-sdhc] SDHOST Reset\n", NULL, (APTR)putch, NULL);
 
     wr32(sc, HC_POWER, 0);
 
@@ -287,12 +291,15 @@ static void sdhost_set_clock_rate(ULONG freq, struct SDCardBase *SDCardBase)
             divider = HC_CLOCKDIVISOR_MAXVAL;
     }
 
-    ULONG args[] = {
-        freq,
-        clock / (divider + 2)
-    };
+    if (SDCardBase->sd_Verbose)
+    {
+        ULONG args[] = {
+            freq,
+            clock / (divider + 2)
+        };
     
-    RawDoFmt("[brcm-sdhc] Requested clock %ld Hz, activated clock %ld Hz\n", args, (APTR)putch, NULL);
+        RawDoFmt("[brcm-sdhc] Requested clock %ld Hz, activated clock %ld Hz\n", args, (APTR)putch, NULL);
+    }
 
     wr32(sc, HC_CLOCKDIVISOR, divider);
 
@@ -367,7 +374,7 @@ void sdhost_cmd_int(ULONG command, ULONG arg, ULONG timeout, struct SDCardBase *
     UWORD val2;
     ULONG blocks = SDCardBase->sd_BlocksToTransfer;
 
-    if (0) {
+    if (SDCardBase->sd_Verbose > 1) {
         ULONG args[] = {
             command >> 24,
             arg,
@@ -438,7 +445,8 @@ void sdhost_cmd_int(ULONG command, ULONG arg, ULONG timeout, struct SDCardBase *
     {
         SDCardBase->sd_LastCMDSuccess = 0;
         SDCardBase->sd_LastError = rd32(sc, HC_HOSTSTATUS) & HC_HSTST_MASK_ERROR_ALL;
-        RawDoFmt("[brcm-sdhc] SDHOST: error sending command\n", NULL, (APTR)putch, NULL);
+        if (SDCardBase->sd_Verbose)
+            RawDoFmt("[brcm-sdhc] SDHOST: error sending command\n", NULL, (APTR)putch, NULL);
         sdhost_dump_regs(SDCardBase);
     }
     else
@@ -486,7 +494,7 @@ void sdhost_cmd(ULONG command, ULONG arg, ULONG timeout, struct SDCardBase *SDCa
     struct ExecBase *SysBase = SDCardBase->sd_SysBase;
     UWORD val2;
 
-    if (0) {
+    if (SDCardBase->sd_Verbose > 1) {
         ULONG args[] = {
             command >> 24,
             arg,
@@ -497,7 +505,8 @@ void sdhost_cmd(ULONG command, ULONG arg, ULONG timeout, struct SDCardBase *SDCa
     }
 
     if (SDCardBase->sd_InCommand) {
-        RawDoFmt("[brcm-sdhc] Attempting to issue command when other command in progress!\n", NULL, (APTR)putch, NULL);
+        if (SDCardBase->sd_Verbose)
+            RawDoFmt("[brcm-sdhc] Attempting to issue command when other command in progress!\n", NULL, (APTR)putch, NULL);
         return;
     }
 
@@ -535,7 +544,8 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
     APTR sc = SDCardBase->sd_SDHOST;
     struct ExecBase *SysBase = SDCardBase->sd_SysBase;
 
-    RawDoFmt("[brcm-sdhc] SDHOST Card Init\n", NULL, (APTR)putch, NULL);
+    if (SDCardBase->sd_Verbose)
+        RawDoFmt("[brcm-sdhc] SDHOST Card Init\n", NULL, (APTR)putch, NULL);
 
     sdhost_reset(SDCardBase);
 
@@ -546,7 +556,8 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
     SDCardBase->sd_CMD(GO_IDLE_STATE, 0, 500000, SDCardBase);
     if(FAIL(SDCardBase))
     {
-        RawDoFmt("[brcm-sdhc] SDHOST: no CMD0 response\n", NULL, (APTR)putch, NULL);
+        if (SDCardBase->sd_Verbose)
+            RawDoFmt("[brcm-sdhc] SDHOST: no CMD0 response\n", NULL, (APTR)putch, NULL);
         return -1;
     }
 
@@ -554,8 +565,9 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
     // Voltage supplied = 0x1 = 2.7-3.6V (standard)
     // Check pattern = 10101010b (as per PLSS 4.3.13) = 0xAA
 
-    RawDoFmt("[brcm-sdhc] SDHOST: note a timeout error on the following command (CMD8) is normal "
-        "and expected if the SD card version is less than 2.0\n", NULL, (APTR)putch, NULL);
+    if (SDCardBase->sd_Verbose)
+        RawDoFmt("[brcm-sdhc] SDHOST: note a timeout error on the following command (CMD8) is normal "
+            "and expected if the SD card version is less than 2.0\n", NULL, (APTR)putch, NULL);
 
     SDCardBase->sd_CMD(SEND_IF_COND, 0x1aa, 500000, SDCardBase);
 
@@ -569,15 +581,18 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
     }
     else if(FAIL(SDCardBase))
     {
-        RawDoFmt("[brcm-sdhc] failure sending CMD8 (%08lx)\n", &SDCardBase->sd_LastInterrupt, (APTR)putch, NULL);
+        if (SDCardBase->sd_Verbose)
+            RawDoFmt("[brcm-sdhc] failure sending CMD8 (%08lx)\n", &SDCardBase->sd_LastInterrupt, (APTR)putch, NULL);
         return -1;
     }
     else
     {
         if(((SDCardBase->sd_Res0) & 0xfff) != 0x1aa)
         {
-            RawDoFmt("[brcm-sdhc] unusable card\n", NULL, (APTR)putch, NULL);
-            RawDoFmt("[brcm-sdhc] CMD8 response %08lx\n", &SDCardBase->sd_Res0, (APTR)putch, NULL);
+            if (SDCardBase->sd_Verbose) {
+                RawDoFmt("[brcm-sdhc] unusable card\n", NULL, (APTR)putch, NULL);
+                RawDoFmt("[brcm-sdhc] CMD8 response %08lx\n", &SDCardBase->sd_Res0, (APTR)putch, NULL);
+            }
             return -1;
         }
         else
@@ -586,7 +601,8 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
 
     // Here we are supposed to check the response to CMD5 (HCSS 3.6)
     // It only returns if the card is a SDIO card
-    RawDoFmt("[brcm-sdhc] SDHOST: note that a timeout error on the following command (CMD5) is "
+    if (SDCardBase->sd_Verbose)
+        RawDoFmt("[brcm-sdhc] SDHOST: note that a timeout error on the following command (CMD5) is "
            "normal and expected if the card is not a SDIO card.\n", NULL, (APTR)putch, NULL);
     SDCardBase->sd_CMD(IO_SET_OP_COND, 0, 10000, SDCardBase);
     if(!TIMEOUT(SDCardBase))
@@ -597,7 +613,8 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
         }
         else
         {
-            RawDoFmt("[brcm-sdhc] SDIO card detected - not currently supported\n", NULL, (APTR)putch, NULL);
+            if (SDCardBase->sd_Verbose)
+                RawDoFmt("[brcm-sdhc] SDIO card detected - not currently supported\n", NULL, (APTR)putch, NULL);
             return -1;
         }
     }
@@ -606,7 +623,8 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
     SDCardBase->sd_CMD(ACMD_41 | IS_APP_CMD, 0, 500000, SDCardBase);
     if(FAIL(SDCardBase))
     {
-        RawDoFmt("[brcm-sdhc] inquiry ACMD41 failed\n", NULL, (APTR)putch, NULL);
+        if (SDCardBase->sd_Verbose)
+            RawDoFmt("[brcm-sdhc] inquiry ACMD41 failed\n", NULL, (APTR)putch, NULL);
         return -1;
     }
 
@@ -625,7 +643,8 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
 
         if(FAIL(SDCardBase))
         {
-            RawDoFmt("[brcm-sdhc] error issuing ACMD41\n", NULL, (APTR)putch, NULL);
+            if (SDCardBase->sd_Verbose)
+                RawDoFmt("[brcm-sdhc] error issuing ACMD41\n", NULL, (APTR)putch, NULL);
             return -1;
         }
 
@@ -639,11 +658,13 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
         }
         else
         {
-            //RawDoFmt("[brcm-sdhc] card is busy, retrying\n", NULL, (APTR)putch, NULL);
-            SDCardBase->sd_Delay(500000, SDCardBase);
-        }       
+            if (SDCardBase->sd_Verbose)
+                RawDoFmt("[brcm-sdhc] card is still busy, retrying\n", NULL, (APTR)putch, NULL);
+            SDCardBase->sd_Delay(100000, SDCardBase);
+        }
     }
 
+    if (SDCardBase->sd_Verbose)
     {
         ULONG args[] = {
             SDCardBase->sd_CardOCR, SDCardBase->sd_CardSupportsSDHC
@@ -662,7 +683,8 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
     SDCardBase->sd_CMD(ALL_SEND_CID, 0, 500000, SDCardBase);
     if(FAIL(SDCardBase))
     {
-        RawDoFmt("SD: error sending ALL_SEND_CID\n", NULL, (APTR)putch, NULL);
+        if (SDCardBase->sd_Verbose)
+            RawDoFmt("[brcm-sdhc] error sending ALL_SEND_CID\n", NULL, (APTR)putch, NULL);
         return -1;
     }
     uint32_t card_cid_0 = SDCardBase->sd_Res0;
@@ -670,6 +692,7 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
     uint32_t card_cid_2 = SDCardBase->sd_Res2;
     uint32_t card_cid_3 = SDCardBase->sd_Res3;
 
+    if (SDCardBase->sd_Verbose)
     {
         ULONG args[] = {
             card_cid_3, card_cid_2, card_cid_1, card_cid_0
@@ -687,7 +710,8 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
     SDCardBase->sd_CMD(SEND_RELATIVE_ADDR, 0, 500000, SDCardBase);
     if(FAIL(SDCardBase))
     {
-        RawDoFmt("SD: error sending SEND_RELATIVE_ADDR\n", NULL, (APTR)putch, NULL);
+        if (SDCardBase->sd_Verbose)
+            RawDoFmt("[brcm-sdhc] error sending SEND_RELATIVE_ADDR\n", NULL, (APTR)putch, NULL);
         return -1;
     }
 
@@ -700,39 +724,46 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
     uint32_t status = (cmd3_resp >> 9) & 0xf;
     uint32_t ready = (cmd3_resp >> 8) & 0x1;
 
-    RawDoFmt("Res0: %08lx\n", &cmd3_resp, (APTR)putch, NULL);
+    if (SDCardBase->sd_Verbose)
+        RawDoFmt("[brcm-sdhc] Res0: %08lx\n", &cmd3_resp, (APTR)putch, NULL);
 
     if(crc_error)
     {
-        RawDoFmt("SD: CRC error\n", NULL, (APTR)putch, NULL);
+        if (SDCardBase->sd_Verbose)
+            RawDoFmt("[brcm-sdhc] CRC error\n", NULL, (APTR)putch, NULL);
         return -1;
     }
 
     if(illegal_cmd)
     {
-        RawDoFmt("SD: illegal command\n", NULL, (APTR)putch, NULL);
+        if (SDCardBase->sd_Verbose)
+            RawDoFmt("[brcm-sdhc] illegal command\n", NULL, (APTR)putch, NULL);
         return -1;
     }
 
     if(error)
     {
-        RawDoFmt("SD: generic error\n", NULL, (APTR)putch, NULL);
+        if (SDCardBase->sd_Verbose)
+            RawDoFmt("[brcm-sdhc] generic error\n", NULL, (APTR)putch, NULL);
         return -1;
     }
 
     if(!ready)
     {
-        RawDoFmt("SD: not ready for data\n", NULL, (APTR)putch, NULL);
+        if (SDCardBase->sd_Verbose)
+            RawDoFmt("[brcm-sdhc] not ready for data\n", NULL, (APTR)putch, NULL);
         return -1;
     }
 
-    RawDoFmt("[brcm-sdhc] RCA: %04lx\n", &SDCardBase->sd_CardRCA, (APTR)putch, NULL);
+    if (SDCardBase->sd_Verbose)
+        RawDoFmt("[brcm-sdhc] RCA: %04lx\n", &SDCardBase->sd_CardRCA, (APTR)putch, NULL);
 
     // Now select the card (toggles it to transfer state)
     SDCardBase->sd_CMD(SELECT_CARD, SDCardBase->sd_CardRCA << 16, 500000, SDCardBase);
     if(FAIL(SDCardBase))
     {
-        RawDoFmt("SD: error sending CMD7\n", NULL, (APTR)putch, NULL);
+        if (SDCardBase->sd_Verbose)
+            RawDoFmt("[brcm-sdhc] error sending CMD7\n", NULL, (APTR)putch, NULL);
         return -1;
     }
 
@@ -741,7 +772,8 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
 
     if((status != 3) && (status != 4))
     {
-        RawDoFmt("SD: invalid status (%ld)\n", &status, (APTR)putch, NULL);
+        if (SDCardBase->sd_Verbose)
+            RawDoFmt("[brcm-sdhc] invalid status (%ld)\n", &status, (APTR)putch, NULL);
         return -1;
     }
 
@@ -751,7 +783,8 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
         SDCardBase->sd_CMD(SET_BLOCKLEN, 512, 500000, SDCardBase);
         if(FAIL(SDCardBase))
         {
-            RawDoFmt("SD: error sending SET_BLOCKLEN\n", NULL, (APTR)putch, NULL);
+            if (SDCardBase->sd_Verbose)
+                RawDoFmt("[brcm-sdhc] error sending SET_BLOCKLEN\n", NULL, (APTR)putch, NULL);
             return -1;
         }
     }
@@ -766,7 +799,8 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
 
     if(FAIL(SDCardBase))
     {
-        RawDoFmt("SD: error sending SEND_SCR\n", NULL, (APTR)putch, NULL);
+        if (SDCardBase->sd_Verbose)
+            RawDoFmt("[brcm-sdhc] error sending SEND_SCR\n", NULL, (APTR)putch, NULL);
         return -1;
     }
 
@@ -777,7 +811,11 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
     uint32_t sd_spec = (scr0 >> (56 - 32)) & 0xf;
     uint32_t sd_spec3 = (scr0 >> (47 - 32)) & 0x1;
     uint32_t sd_spec4 = (scr0 >> (42 - 32)) & 0x1;
+    uint32_t sd_specx = (scr0 >> (38 - 32)) & 0xf;
+
     SDCardBase->sd_SCR.sd_bus_widths = (scr0 >> (48 - 32)) & 0xf;
+    SDCardBase->sd_SCR.sd_commands = (scr0 & 0xf);
+
     if(sd_spec == 0)
         SDCardBase->sd_SCR.sd_version = SD_VER_1;
     else if(sd_spec == 1)
@@ -788,39 +826,76 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
             SDCardBase->sd_SCR.sd_version = SD_VER_2;
         else if(sd_spec3 == 1)
         {
-            if(sd_spec4 == 0)
-                SDCardBase->sd_SCR.sd_version = SD_VER_3;
-            else if(sd_spec4 == 1)
-                SDCardBase->sd_SCR.sd_version = SD_VER_4;
+            if (sd_specx == 0) {
+                if(sd_spec4 == 0)
+                    SDCardBase->sd_SCR.sd_version = SD_VER_3;
+                else if(sd_spec4 == 1)
+                    SDCardBase->sd_SCR.sd_version = SD_VER_4;
+            }
+            else {
+                switch(sd_specx)
+                {
+                    case 1:
+                        SDCardBase->sd_SCR.sd_version = SD_VER_5;
+                        break;
+                    case 2:
+                        SDCardBase->sd_SCR.sd_version = SD_VER_6;
+                        break;
+                    case 3:
+                        SDCardBase->sd_SCR.sd_version = SD_VER_7;
+                        break;
+                    case 4:
+                        SDCardBase->sd_SCR.sd_version = SD_VER_8;
+                        break;
+                }
+            }
         }
     }
 
-    RawDoFmt("SD: &scr: %08lx\n", &SDCardBase->sd_SCR.scr[0], (APTR)putch, NULL);
+    if (SDCardBase->sd_Verbose)
     {
         ULONG args[] = {
             SDCardBase->sd_SCR.scr[0],
             SDCardBase->sd_SCR.scr[1]
         };
-        RawDoFmt("SD: SCR[0]: %08lx, SCR[1]: %08lx\n", args, (APTR)putch, NULL);
+        RawDoFmt("[brcm-sdhc] SCR[0]: %08lx, SCR[1]: %08lx\n", args, (APTR)putch, NULL);
     }
+
+    if (SDCardBase->sd_Verbose)
     {
         ULONG args[] = {
             SDCardBase->sd_SCR.sd_version,
             SDCardBase->sd_SCR.sd_bus_widths
         };
-        RawDoFmt("SD: SCR: version %ld, bus_widths %01lx\n", args, (APTR)putch, NULL);
+        RawDoFmt("[brcm-sdhc] SCR: version %ld, bus_widths %01lx\n", args, (APTR)putch, NULL);
+
+        if (SDCardBase->sd_SCR.sd_commands) {
+            RawDoFmt("[brcm-sdhc] supported commands:", NULL, (APTR)putch, NULL);
+            if (SDCardBase->sd_SCR.sd_commands & 1) {
+                RawDoFmt(" CMD20", NULL, (APTR)putch, NULL);
+            }
+            if (SDCardBase->sd_SCR.sd_commands & 2) {
+                RawDoFmt(" CMD23", NULL, (APTR)putch, NULL);
+            }
+            if (SDCardBase->sd_SCR.sd_commands & 4) {
+                RawDoFmt(" CMD48/49", NULL, (APTR)putch, NULL);
+            }
+            if (SDCardBase->sd_SCR.sd_commands & 8) {
+                RawDoFmt(" CMD58/59", NULL, (APTR)putch, NULL);
+            }
+        }
     }
     
     if(SDCardBase->sd_SCR.sd_bus_widths & 0x4)
     {
         // Set 4-bit transfer mode (ACMD6)
         // See HCSS 3.4 for the algorithm
-        RawDoFmt("SD: switching to 4-bit data mode\n", NULL, (APTR)putch, NULL);
+        RawDoFmt("[brcm-sdhc] switching to 4-bit data mode\n", NULL, (APTR)putch, NULL);
 
         // Send ACMD6 to change the card's bit mode
         SDCardBase->sd_CMD(SET_BUS_WIDTH, 0x2, 500000, SDCardBase);
         if(FAIL(SDCardBase))
-            RawDoFmt("SD: switch to 4-bit data mode failed\n", NULL, (APTR)putch, NULL);
+            RawDoFmt("[brcm-sdhc] switch to 4-bit data mode failed\n", NULL, (APTR)putch, NULL);
         else
         {
             // Change bit mode for Host
@@ -859,7 +934,7 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
 
     SDCardBase->sd_BlockSize = 512;
 
-    RawDoFmt("SD: found a valid version %ld SD card\n", &SDCardBase->sd_SCR.sd_version, (APTR)putch, NULL);
+    RawDoFmt("[brcm-sdhc] found a valid version %ld SD card\n", &SDCardBase->sd_SCR.sd_version, (APTR)putch, NULL);
 
     return 0;
 }
@@ -879,7 +954,7 @@ static int sdhost_ensure_data_mode(struct SDCardBase *SDCardBase)
     SDCardBase->sd_CMD(SEND_STATUS, SDCardBase->sd_CardRCA << 16, 500000, SDCardBase);
     if(FAIL(SDCardBase))
     {
-        RawDoFmt("SD: ensure_data_mode() error sending CMD13\n", NULL, (APTR)putch, NULL);
+        RawDoFmt("[brcm-sdhc] ensure_data_mode() error sending CMD13\n", NULL, (APTR)putch, NULL);
         SDCardBase->sd_CardRCA = 0;
         return -1;
     }
@@ -893,7 +968,7 @@ static int sdhost_ensure_data_mode(struct SDCardBase *SDCardBase)
         SDCardBase->sd_CMD(SELECT_CARD, SDCardBase->sd_CardRCA << 16, 500000, SDCardBase);
         if(FAIL(SDCardBase))
         {
-            RawDoFmt("SD: ensure_data_mode() no response from CMD17\n", NULL, (APTR)putch, NULL);
+            RawDoFmt("[brcm-sdhc] ensure_data_mode() no response from CMD17\n", NULL, (APTR)putch, NULL);
             SDCardBase->sd_CardRCA = 0;
             return -1;
         }
@@ -904,7 +979,7 @@ static int sdhost_ensure_data_mode(struct SDCardBase *SDCardBase)
         SDCardBase->sd_CMD(STOP_TRANSMISSION, 0, 500000, SDCardBase);
         if(FAIL(SDCardBase))
         {
-            RawDoFmt("SD: ensure_data_mode() no response from CMD12\n", NULL, (APTR)putch, NULL);
+            RawDoFmt("[brcm-sdhc] ensure_data_mode() no response from CMD12\n", NULL, (APTR)putch, NULL);
             SDCardBase->sd_CardRCA = 0;
             return -1;
         }
@@ -921,11 +996,11 @@ static int sdhost_ensure_data_mode(struct SDCardBase *SDCardBase)
     if(cur_state != 4)
     {
 
-        RawDoFmt("SD: ensure_data_mode() status was %ld, rechecking status: ", &cur_state, (APTR)putch, NULL);
+        RawDoFmt("[brcm-sdhc] ensure_data_mode() status was %ld, rechecking status: ", &cur_state, (APTR)putch, NULL);
         SDCardBase->sd_CMD(SEND_STATUS, SDCardBase->sd_CardRCA << 16, 500000, SDCardBase);
         if(FAIL(SDCardBase))
         {
-            RawDoFmt("SD: ensure_data_mode() no response from CMD13\n", NULL, (APTR)putch, NULL);
+            RawDoFmt("[brcm-sdhc] ensure_data_mode() no response from CMD13\n", NULL, (APTR)putch, NULL);
             SDCardBase->sd_CardRCA = 0;
             return -1;
         }
@@ -936,7 +1011,7 @@ static int sdhost_ensure_data_mode(struct SDCardBase *SDCardBase)
 
         if(cur_state != 4)
         {
-            RawDoFmt("SD: unable to initialise SD card to "
+            RawDoFmt("[brcm-sdhc] unable to initialise SD card to "
                     "data mode (state %ld)\n", &cur_state, (APTR)putch, NULL);
             SDCardBase->sd_CardRCA = 0;
             return -1;
@@ -958,7 +1033,7 @@ int sdhost_do_data_command(int is_write, uint8_t *buf, uint32_t buf_size, uint32
     if(buf_size < SDCardBase->sd_BlockSize)
     {
         ULONG args[] = { buf_size, SDCardBase->sd_BlockSize};
-        RawDoFmt("SD: do_data_command() called with buffer size (%ld) less than "
+        RawDoFmt("[brcm-sdhc] do_data_command() called with buffer size (%ld) less than "
             "block size (%ld)\n", args, (APTR)putch, NULL);
         return -1;
     }
@@ -967,7 +1042,7 @@ int sdhost_do_data_command(int is_write, uint8_t *buf, uint32_t buf_size, uint32
     if(buf_size % SDCardBase->sd_BlockSize)
     {
         ULONG args[] = { buf_size, SDCardBase->sd_BlockSize };
-        RawDoFmt("SD: do_data_command() called with buffer size (%ld) not an "
+        RawDoFmt("[brcm-sdhc] do_data_command() called with buffer size (%ld) not an "
             "exact multiple of block size (%ld)\n", args, (APTR)putch, NULL);
         return -1;
     }
@@ -1013,15 +1088,21 @@ int sdhost_do_data_command(int is_write, uint8_t *buf, uint32_t buf_size, uint32
                 return -1;
             }
 
-            //RawDoFmt("SD: error sending CMD%ld, ", &command, (APTR)putch, NULL);
-            //RawDoFmt("error = %08lx.  ", &SDCardBase->sd_LastError, (APTR)putch, NULL);
+            if (SDCardBase->sd_Verbose) {
+                ULONG args[] = {
+                    command,
+                    SDCardBase->sd_LastError
+                };
+                RawDoFmt("[brcm-sdhc] error sending CMD%ld, error = %08lx.  ", args, (APTR)putch, NULL);
+            }
             retry_count++;
-            /*
-            if(retry_count < max_retries)
-                RawDoFmt("Retrying...\n", NULL, (APTR)putch, NULL);
-            else
-                RawDoFmt("Giving up.\n", NULL, (APTR)putch, NULL);
-            */
+            
+            if (SDCardBase->sd_Verbose) {
+                if(retry_count < max_retries)
+                    RawDoFmt("Retrying...\n", NULL, (APTR)putch, NULL);
+                else
+                    RawDoFmt("Giving up.\n", NULL, (APTR)putch, NULL);
+            }
         }
     }
 
@@ -1057,14 +1138,12 @@ int sdhost_write(uint8_t *buf, uint32_t buf_size, uint32_t block_no, struct SDCa
     RawDoFmt("WRITE NOT 100% SAFE YET!!! buf=%08lx, buf_size=%08lx, block_no=%08lx\n", args, (APTR)putch, NULL);
 #endif
 
-#if 1
     // Check the status of the card
     if(sdhost_ensure_data_mode(SDCardBase) != 0)
         return -1;
 
     if(sdhost_do_data_command(1, buf, buf_size, block_no, SDCardBase) < 0)
         return -1;
-#endif
 
     return buf_size;
 }

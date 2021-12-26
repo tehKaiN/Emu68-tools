@@ -26,6 +26,7 @@ struct sd_scr
     uint32_t    scr[2];
     uint32_t    sd_bus_widths;
     int         sd_version;
+    int         sd_commands;
 };
 
 struct SDCardUnit;
@@ -358,6 +359,12 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase);
 #define SD_VER_2            3
 #define SD_VER_3            4
 #define SD_VER_4            5
+#define SD_VER_5            6
+#define SD_VER_6            7
+#define SD_VER_7            8
+#define SD_VER_8            9
+
+#define SD_CMD_
 
 #define SD_RESET_CMD            (1 << 25)
 #define SD_RESET_DAT            (1 << 26)

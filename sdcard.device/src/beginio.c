@@ -647,7 +647,7 @@ void SD_BeginIO(struct IORequest *io asm("a1"))
     io->io_Error = 0;
     io->io_Message.mn_Node.ln_Type = NT_MESSAGE;
 
-#if 0
+    if (SDCardBase->sd_Verbose > 1)
     {
         ULONG args[] = {
             (ULONG)unit->su_UnitNum,
@@ -660,7 +660,6 @@ void SD_BeginIO(struct IORequest *io asm("a1"))
 
         RawDoFmt("[brcm-sdhc:%ld] BeginIO Unit=%08lx, cmd=%ld, length=%ld, actual=%08lx, offset=%08lx\n", args, (APTR)putch, NULL);
     }
-#endif
 
     Disable();
 

@@ -47,11 +47,6 @@ static ULONG LoadSegBlock(struct SmartBuffer *bu)
     struct RelocHunk *rh;
     ULONG current_hunk = 0;
 
-#if 0
-    RawDoFmt("LoadSegBlock(%08lx)\n", &bu, (APTR)putch, NULL);
-    RawDoFmt("Header: %08lx\n", &bu->buffer[0], (APTR)putch, NULL);
-#endif
-
     if (bu->size < 4 || bu->buffer[0] != HUNK_HEADER) {
 		return 0;
 	}
@@ -59,15 +54,6 @@ static ULONG LoadSegBlock(struct SmartBuffer *bu)
     /* Parse header */
     firstHunk = bu->buffer[3];
     lastHunk = bu->buffer[4];
-
-    if (0)
-    {
-        ULONG args[] = {
-            firstHunk, lastHunk
-        };
-
-        RawDoFmt("Loading hunks from %ld to %ld\n", args, (APTR)putch, NULL);
-    }
 
     words = &bu->buffer[5];
 
@@ -95,10 +81,6 @@ static ULONG LoadSegBlock(struct SmartBuffer *bu)
         rh[i].hunkData[0] = rh[i].hunkSize;
     }
 
-#if 0
-    RawDoFmt("hunks pre-allocated\n", NULL, (APTR)putch, NULL);
-#endif
-
     /* Adjust seglist-pointers to next element */
     for (unsigned i = 0; i < lastHunk - firstHunk; i++)
     {
@@ -110,10 +92,6 @@ static ULONG LoadSegBlock(struct SmartBuffer *bu)
     {
         ULONG hunk_size;
         ULONG hunk_type;
-
-#if 0
-        RawDoFmt("Processing hunk %ld\n", &current_hunk, (APTR)putch, NULL);
-#endif
 
         switch((hunk_type = *words))
         {
@@ -270,6 +248,7 @@ static void LoadFilesystem(struct SDCardUnit *unit, ULONG dosType)
                 {
                     filesys_header = buff->fshd.fhb_Next;
 
+                    if (SDCardBase->sd_Verbose)
                     {
                         ULONG args[] = {
                             unit->su_UnitNum,
@@ -285,6 +264,7 @@ static void LoadFilesystem(struct SDCardUnit *unit, ULONG dosType)
                         ULONG buffer_size = 65536;
                         ULONG loaded = 0;
 
+                        if (SDCardBase->sd_Verbose)
                         {
                             ULONG args[] = {
                                 unit->su_UnitNum
@@ -340,6 +320,7 @@ static void LoadFilesystem(struct SDCardUnit *unit, ULONG dosType)
                             }
                         }
 
+                        if (SDCardBase->sd_Verbose)
                         {
                             ULONG args[] = {
                                 unit->su_UnitNum,
@@ -434,6 +415,7 @@ static void MountPartitions(struct SDCardUnit *unit)
         UBYTE                   bblock[512];
     } buff;
 
+    if (SDCardBase->sd_Verbose)
     {
         ULONG args[] = {
             unit->su_UnitNum
@@ -505,6 +487,7 @@ static void MountPartitions(struct SDCardUnit *unit)
                             fse = findFSE(unit, buff.part.pb_Environment[DE_DOSTYPE]);
                         }
                         
+                        if (SDCardBase->sd_Verbose)
                         {
                             ULONG args[] = {
                                 unit->su_UnitNum,
