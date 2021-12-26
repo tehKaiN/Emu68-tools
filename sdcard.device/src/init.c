@@ -241,7 +241,7 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                     if (cmd[11 + i] < '0' || cmd[11 + i] > '9')
                         break;
 
-                    verbose = verbose * 10 + cmd[9 + i] - '0';
+                    verbose = verbose * 10 + cmd[11 + i] - '0';
                 }
 
                 if (verbose > 10)
