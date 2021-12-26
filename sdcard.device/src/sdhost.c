@@ -871,16 +871,16 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
 
         if (SDCardBase->sd_SCR.sd_commands) {
             RawDoFmt("[brcm-sdhc] supported commands:", NULL, (APTR)putch, NULL);
-            if (SDCardBase->sd_SCR.sd_commands & 1) {
+            if (SDCardBase->sd_SCR.sd_commands & SD_CMD20_SUPP) {
                 RawDoFmt(" CMD20", NULL, (APTR)putch, NULL);
             }
-            if (SDCardBase->sd_SCR.sd_commands & 2) {
+            if (SDCardBase->sd_SCR.sd_commands & SD_CMD23_SUPP) {
                 RawDoFmt(" CMD23", NULL, (APTR)putch, NULL);
             }
-            if (SDCardBase->sd_SCR.sd_commands & 4) {
+            if (SDCardBase->sd_SCR.sd_commands & SD_CMD48_49_SUPP) {
                 RawDoFmt(" CMD48/49", NULL, (APTR)putch, NULL);
             }
-            if (SDCardBase->sd_SCR.sd_commands & 8) {
+            if (SDCardBase->sd_SCR.sd_commands & SD_CMD58_59_SUPP) {
                 RawDoFmt(" CMD58/59", NULL, (APTR)putch, NULL);
             }
         }

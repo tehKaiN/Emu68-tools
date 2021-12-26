@@ -364,7 +364,10 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase);
 #define SD_VER_7            8
 #define SD_VER_8            9
 
-#define SD_CMD_
+#define SD_CMD20_SUPP       1
+#define SD_CMD23_SUPP       2
+#define SD_CMD48_49_SUPP    4
+#define SD_CMD58_59_SUPP    8
 
 #define SD_RESET_CMD            (1 << 25)
 #define SD_RESET_DAT            (1 << 26)
