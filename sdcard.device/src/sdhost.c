@@ -883,6 +883,7 @@ int sdhost_card_init(struct SDCardBase *SDCardBase)
             if (SDCardBase->sd_SCR.sd_commands & SD_CMD58_59_SUPP) {
                 RawDoFmt(" CMD58/59", NULL, (APTR)putch, NULL);
             }
+            RawDoFmt("\n", NULL, (APTR)putch, NULL);
         }
     }
     
