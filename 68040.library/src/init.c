@@ -153,7 +153,7 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
             new_flags |= AFF_68010 | AFF_68020 | AFF_68030 | AFF_68040;
 
             if (has_fpu) {
-                new_flags |= AFF_FPU40 | AFF_68881;
+                new_flags |= AFF_FPU40 | AFF_68881 | AFF_68882;
             }
 
             ULONG args[] = {
