@@ -14,11 +14,6 @@
 
 #include "sdcard.h"
 
-static void putch(UBYTE data asm("d0"), APTR ignore asm("a3"))
-{
-    *(UBYTE*)0xdeadbeef = data;
-}
-
 struct RelocHunk
 {
 	ULONG hunkSize;

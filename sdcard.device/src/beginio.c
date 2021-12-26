@@ -25,11 +25,6 @@
 #define HEAD_COUNT      128
 #define SECTOR_COUNT    64
 
-static void putch(UBYTE data asm("d0"), APTR ignore asm("a3"))
-{
-    *(UBYTE*)0xdeadbeef = data;
-}
-
 #ifndef TD_READ64
 #define TD_READ64       24
 #endif
@@ -77,34 +72,14 @@ const UWORD NSDSupported[] = {
         0
     };
 
-static CONST_STRPTR const ASCII_Table = "0123456789ABCDEF";
-
-static CONST_STRPTR const ManuID[] = {
-    [0x01] = "Panasoni",
-    [0x02] = "Toshiba ",
-    [0x03] = "SanDisk ",
-    [0x08] = "SiliconP",
-    [0x18] = "Infineon",
-    [0x1b] = "Samsung ",
-    [0x1c] = "Transcnd",
-    [0x1d] = "AData   ",
-    [0x1e] = "Transcnd",
-    [0x1f] = "Kingston",
-    [0x27] = "Phison  ",
-    [0x28] = "Lexar   ",
-    [0x30] = "SanDisk ",
-    [0x31] = "SiliconP",
-    [0x41] = "Kingston",
-    [0x33] = "STMicro ",
-    [0x6f] = "STMicro ",
-    [0x74] = "Transcnd",
-    [0x76] = "Patriot ",
-    [0x82] = "Sony    ",
-    [0x89] = "Unknown ",
-    [0x9f] = "GoodRAM ",
-};
-
-#define MANU_ID_LEN (sizeof(ManuID) / sizeof(ManuID[0]))
+static inline char get_hex(int a)
+{
+    a &= 15;
+    if (a < 10)
+        return a + '0';
+    else
+        return a + 'A' - 10;
+}
 
 void int_handle_scsi(struct IOStdReq *io, struct SDCardBase * SDCardBase)
 {
@@ -119,7 +94,6 @@ void int_handle_scsi(struct IOStdReq *io, struct SDCardBase * SDCardBase)
     UBYTE *tmp1;
     UBYTE tmp2;
     UBYTE tmpbuf[8];
-    UBYTE *ASCII = (UBYTE*)((ULONG)ASCII_Table + (ULONG)SDCardBase->sd_ROMBase);
 
     switch (cmd->scsi_Command[0])
     {
@@ -151,9 +125,9 @@ void int_handle_scsi(struct IOStdReq *io, struct SDCardBase * SDCardBase)
                         if (i == 8)
                         {
                             tmp2 = (SDCardBase->sd_CID[0] >> 16) & 0xff;
-                            UBYTE **id = (UBYTE**)((ULONG)ManuID + (ULONG)SDCardBase->sd_ROMBase);
-                            if (tmp2 < MANU_ID_LEN && id[tmp2] != NULL) {
-                                tmp1 = (STRPTR)id[tmp2] + (ULONG)SDCardBase->sd_ROMBase;
+                            UBYTE **id = (UBYTE**)SDCardBase->sd_ManuID;
+                            if (id[tmp2] != NULL) {
+                                tmp1 = (STRPTR)id[tmp2];
                             }
                             else {
                                 tmpbuf[0] = 'n';
@@ -161,8 +135,8 @@ void int_handle_scsi(struct IOStdReq *io, struct SDCardBase * SDCardBase)
                                 tmpbuf[2] = 'a';
                                 tmpbuf[3] = ' ';
                                 tmpbuf[4] = '(';
-                                tmpbuf[5] = ASCII[(tmp2 >> 4) & 0xf];
-                                tmpbuf[6] = ASCII[tmp2 & 0xf];
+                                tmpbuf[5] = get_hex(tmp2 >> 4);
+                                tmpbuf[6] = get_hex(tmp2);
                                 tmpbuf[7] = ')';
                                 tmp1 = tmpbuf;
                             }
@@ -212,7 +186,7 @@ void int_handle_scsi(struct IOStdReq *io, struct SDCardBase * SDCardBase)
                         else if (i >= 36 && i < 44) {
                             if ((i & 1) == 0)
                                 val >>= 4;
-                            val = ASCII[val & 0xf];
+                            val = get_hex(val);
                         } else
                             val = 0;
                         break;

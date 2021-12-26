@@ -87,6 +87,7 @@ struct SDCardBase {
 
     ULONG               sd_CID[4];
     UBYTE               sd_StatusReg[64];
+    CONST_STRPTR        sd_ManuID[255];
 
     ULONG               sd_Capabilities0;
     ULONG               sd_Capabilities1;
@@ -106,6 +107,7 @@ struct SDCardBase {
     UBYTE               sd_AppCommand;
     UBYTE               sd_HideUnit0;
     UBYTE               sd_ReadOnlyUnit0;
+    UBYTE               sd_Verbose;
 };
 
 struct SDCardUnit {
@@ -400,5 +402,18 @@ static inline void wr32be(APTR addr, ULONG offset, ULONG val)
 #define TIMEOUT_WAIT(check_func, tout) \
     do { ULONG cnt = (tout) / 2; if (cnt == 0) cnt = 1; while(cnt != 0) { if (check_func) break; \
     cnt = cnt - 1; SDCardBase->sd_Delay(2, SDCardBase); }  } while(0)
+
+
+static inline void putch(UBYTE data asm("d0"), APTR ignore asm("a3"))
+{
+    *(UBYTE*)0xdeadbeef = data;
+}
+
+ULONG SD_Expunge(struct SDCardBase * SDCardBase asm("a6"));
+APTR SD_ExtFunc(struct SDCardBase * SDCardBase asm("a6"));
+void SD_Open(struct IORequest * io asm("a1"), LONG unitNumber asm("d0"), ULONG flags asm("d1"));
+ULONG SD_Close(struct IORequest * io asm("a1"));
+void SD_BeginIO(struct IORequest *io asm("a1"));
+LONG SD_AbortIO(struct IORequest *io asm("a1"));
 
 #endif /* _SDCARD_H */

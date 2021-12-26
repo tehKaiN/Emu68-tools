@@ -52,99 +52,7 @@
 #include "emmc.h"
 #include "sdhost.h"
 #include "mbox.h"
-
-ULONG SD_Expunge(struct SDCardBase * SDCardBase asm("a6"))
-{
-    /* This is rom based device. no expunge here */
-    if (SDCardBase->sd_Device.dd_Library.lib_OpenCnt > 0)
-    {
-        SDCardBase->sd_Device.dd_Library.lib_Flags |= LIBF_DELEXP;
-    }
-
-    return 0;
-}
-
-APTR SD_ExtFunc(struct SDCardBase * SDCardBase asm("a6"))
-{
-    return SDCardBase;
-}
-
-static void putch(UBYTE data asm("d0"), APTR ignore asm("a3"))
-{
-    *(UBYTE*)0xdeadbeef = data;
-}
-
-void SD_Open(struct IORequest * io asm("a1"), LONG unitNumber asm("d0"),
-    ULONG flags asm("d1"))
-{
-    struct SDCardBase *SDCardBase = (struct SDCardBase *)io->io_Device;
-    struct ExecBase *SysBase = SDCardBase->sd_SysBase;
-    (void)flags;
-
-#if 0
-    {
-        ULONG args[] = {
-            (ULONG)io, unitNumber, flags
-        };
-        RawDoFmt("[brcm-sdhc] Open(%08lx, %lx, %ld)\n", args, (APTR)putch, NULL);
-    }
-#endif
-
-    io->io_Error = 0;
-
-    /* Do not continue if unit number does not fit */
-    if (unitNumber >= SDCardBase->sd_UnitCount || (unitNumber == 0 && SDCardBase->sd_HideUnit0)) {
-        io->io_Error = TDERR_BadUnitNum;
-    }
-
-    /* 
-        Do whatever necessary to open given unit number with flags, set NT_REPLYMSG if 
-        opening device shall complete with success, set io_Error otherwise
-    */
-
-    if (io->io_Error == 0)
-    {
-        /* Get unit based on unit number */
-        struct SDCardUnit *u = SDCardBase->sd_Units[unitNumber];
-
-        /* Increase open counter of the unit */
-        u->su_Unit.unit_OpenCnt++;
-      
-        /* Increase global open coutner of the device */
-        SDCardBase->sd_Device.dd_Library.lib_OpenCnt++;
-        SDCardBase->sd_Device.dd_Library.lib_Flags &= ~LIBF_DELEXP;
-
-        io->io_Unit = &u->su_Unit;
-        io->io_Unit->unit_flags |= UNITF_ACTIVE;
-        io->io_Message.mn_Node.ln_Type = NT_REPLYMSG;
-    }
-    else
-    {
-        io->io_Error = IOERR_OPENFAIL;
-    }
-    
-    /* In contrast to normal library there is no need to return anything */
-    return;
-}
-
-ULONG SD_Close(struct IORequest * io asm("a1"))
-{
-    struct SDCardBase *SDCardBase = (struct SDCardBase *)io->io_Device;
-    struct SDCardUnit *u = (struct SDCardUnit *)io->io_Unit;
-
-    u->su_Unit.unit_OpenCnt--;
-    SDCardBase->sd_Device.dd_Library.lib_OpenCnt--;
-
-    if (SDCardBase->sd_Device.dd_Library.lib_OpenCnt == 0)
-    {
-        if (SDCardBase->sd_Device.dd_Library.lib_Flags & LIBF_DELEXP)
-        {
-            return SD_Expunge(SDCardBase);
-        }
-    }
-    
-    return 0;
-}
+#include "findtoken.h"
 
 extern const char deviceName[];
 extern const char deviceIdString[];
@@ -173,9 +81,6 @@ CONST_APTR GetPropValueRecursive(APTR key, CONST_STRPTR property, APTR DeviceTre
     return NULL;
 }
 
-void SD_BeginIO(struct IORequest *io asm("a1"));
-LONG SD_AbortIO(struct IORequest *io asm("a1"));
-
 void delay(ULONG us, struct SDCardBase *SDCardBase)
 {
     ULONG timer = LE32(*(volatile ULONG*)0xf2003004);
@@ -194,52 +99,6 @@ void delay(ULONG us, struct SDCardBase *SDCardBase)
 
     DoIO((struct IORequest *)&SDCardBase->sd_TimeReq);
 #endif
-}
-
-CONST_STRPTR FindToken(CONST_STRPTR string, CONST_STRPTR token)
-{
-    CONST_STRPTR ret = NULL;
-
-    if (string)
-    {
-        do {
-            while (*string == ' ' || *string == '\t') {
-                string++;
-            }
-
-            if (*string == 0)
-                break;
-
-            for (int i=0; token[i] != 0; i++)
-            {
-                if (string[i] != token[i])
-                {
-                    break;
-                }
-
-                if (token[i] == '=') {
-                    ret = string;
-                    break;
-                }
-
-                if (string[i+1] == 0 || string[i+1] == ' ' || string[i+1] == '\t') {
-                    ret = string;
-                    break;
-                }
-            }
-
-            if (ret)
-                break;
-
-            while(*string != 0) {
-                if (*string != ' ' && *string != '\t')
-                    string++;
-                else break;
-            }
-
-        } while(!ret && *string != 0);
-    }
-    return ret;
 }
 
 APTR Init(struct ExecBase *SysBase asm("a6"))
@@ -265,18 +124,41 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
         if (base_pointer != NULL)
         {
             APTR key;
-            ULONG relFuncTable[] = {
-                (ULONG)SD_Open + (ULONG)binding.cb_ConfigDev->cd_BoardAddr,
-                (ULONG)SD_Close + (ULONG)binding.cb_ConfigDev->cd_BoardAddr,
-                (ULONG)SD_Expunge + (ULONG)binding.cb_ConfigDev->cd_BoardAddr,
-                (ULONG)SD_ExtFunc + (ULONG)binding.cb_ConfigDev->cd_BoardAddr,
-                (ULONG)SD_BeginIO + (ULONG)binding.cb_ConfigDev->cd_BoardAddr,
-                (ULONG)SD_AbortIO + (ULONG)binding.cb_ConfigDev->cd_BoardAddr,
-                -1
-            };
+            ULONG relFuncTable[7];
             
+            relFuncTable[0] = (ULONG)&SD_Open;
+            relFuncTable[1] = (ULONG)&SD_Close;
+            relFuncTable[2] = (ULONG)&SD_Expunge;
+            relFuncTable[3] = (ULONG)&SD_ExtFunc;
+            relFuncTable[4] = (ULONG)&SD_BeginIO;
+            relFuncTable[5] = (ULONG)&SD_AbortIO;
+            relFuncTable[6] = (ULONG)-1;
+
             SDCardBase = (struct SDCardBase *)((UBYTE *)base_pointer + BASE_NEG_SIZE);
             MakeFunctions(SDCardBase, relFuncTable, 0);
+
+            SDCardBase->sd_ManuID[0x01] = "Panasoni";
+            SDCardBase->sd_ManuID[0x02] = "Toshiba ";
+            SDCardBase->sd_ManuID[0x03] = "SanDisk ";
+            SDCardBase->sd_ManuID[0x08] = "SiliconP";
+            SDCardBase->sd_ManuID[0x18] = "Infineon";
+            SDCardBase->sd_ManuID[0x1b] = "Samsung ";
+            SDCardBase->sd_ManuID[0x1c] = "Transcnd";
+            SDCardBase->sd_ManuID[0x1d] = "AData   ";
+            SDCardBase->sd_ManuID[0x1e] = "Transcnd";
+            SDCardBase->sd_ManuID[0x1f] = "Kingston";
+            SDCardBase->sd_ManuID[0x27] = "Phison  ";
+            SDCardBase->sd_ManuID[0x28] = "Lexar   ";
+            SDCardBase->sd_ManuID[0x30] = "SanDisk ";
+            SDCardBase->sd_ManuID[0x31] = "SiliconP";
+            SDCardBase->sd_ManuID[0x41] = "Kingston";
+            SDCardBase->sd_ManuID[0x33] = "STMicro ";
+            SDCardBase->sd_ManuID[0x6f] = "STMicro ";
+            SDCardBase->sd_ManuID[0x74] = "Transcnd";
+            SDCardBase->sd_ManuID[0x76] = "Patriot ";
+            SDCardBase->sd_ManuID[0x82] = "Sony    ";
+            SDCardBase->sd_ManuID[0x89] = "Unknown ";
+            SDCardBase->sd_ManuID[0x9f] = "GoodRAM ";
 
             SDCardBase->sd_ConfigDev = binding.cb_ConfigDev;
             SDCardBase->sd_ROMBase = binding.cb_ConfigDev->cd_BoardAddr;
@@ -286,13 +168,13 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
 
             SDCardBase->sd_Device.dd_Library.lib_Node.ln_Type = NT_DEVICE;
             SDCardBase->sd_Device.dd_Library.lib_Node.ln_Pri = SDCARD_PRIORITY;
-            SDCardBase->sd_Device.dd_Library.lib_Node.ln_Name = (STRPTR)((ULONG)deviceName + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+            SDCardBase->sd_Device.dd_Library.lib_Node.ln_Name = (STRPTR)deviceName;
 
             SDCardBase->sd_Device.dd_Library.lib_NegSize = BASE_NEG_SIZE;
             SDCardBase->sd_Device.dd_Library.lib_PosSize = BASE_POS_SIZE;
             SDCardBase->sd_Device.dd_Library.lib_Version = SDCARD_VERSION;
             SDCardBase->sd_Device.dd_Library.lib_Revision = SDCARD_REVISION;
-            SDCardBase->sd_Device.dd_Library.lib_IdString = (STRPTR)((ULONG)deviceIdString + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);    
+            SDCardBase->sd_Device.dd_Library.lib_IdString = (STRPTR)deviceIdString;
 
             SDCardBase->sd_SysBase = SysBase;
             SDCardBase->sd_DeviceTreeBase = DeviceTreeBase;
@@ -305,40 +187,40 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
             SDCardBase->sd_TimeReq.tr_node.io_Message.mn_ReplyPort = &SDCardBase->sd_Port;
             OpenDevice("timer.device", UNIT_MICROHZ, (struct IORequest *)&SDCardBase->sd_TimeReq, 0);
 
-            SDCardBase->sd_DoIO = (APTR)((ULONG)int_do_io + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+            SDCardBase->sd_DoIO = int_do_io;
             extern const UWORD NSDSupported[];
-            SDCardBase->sd_NSDSupported = (APTR)((ULONG)NSDSupported + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+            SDCardBase->sd_NSDSupported = (APTR)NSDSupported;
 
             /* Set MBOX functions in device base */
-            SDCardBase->get_clock_rate = (APTR)((ULONG)get_clock_rate + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
-            SDCardBase->set_clock_rate = (APTR)((ULONG)set_clock_rate + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
-            SDCardBase->get_clock_state = (APTR)((ULONG)get_clock_state + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
-            SDCardBase->set_clock_state = (APTR)((ULONG)set_clock_state + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
-            SDCardBase->get_power_state = (APTR)((ULONG)get_power_state + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
-            SDCardBase->set_power_state = (APTR)((ULONG)set_power_state + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
-            SDCardBase->set_led_state = (APTR)((ULONG)set_led_state + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+            SDCardBase->get_clock_rate = (APTR)get_clock_rate;
+            SDCardBase->set_clock_rate = (APTR)set_clock_rate;
+            SDCardBase->get_clock_state = (APTR)get_clock_state;
+            SDCardBase->set_clock_state = (APTR)set_clock_state;
+            SDCardBase->get_power_state = (APTR)get_power_state;
+            SDCardBase->set_power_state = (APTR)set_power_state;
+            SDCardBase->set_led_state = (APTR)set_led_state;
 
             /* Set SD functions in device base */
 #if USE_SDHOST
-            SDCardBase->sd_PowerCycle = (APTR)((ULONG)sdhost_powerCycle + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
-            SDCardBase->sd_SetLED = (APTR)((ULONG)sdhost_led + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
-            SDCardBase->sd_GetBaseClock = (APTR)((ULONG)sdhost_getclock + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
-            SDCardBase->sd_CardInit = (APTR)((ULONG)sdhost_card_init + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
-            SDCardBase->sd_CMD = (APTR)((ULONG)sdhost_cmd + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
-            SDCardBase->sd_CMD_int = (APTR)((ULONG)sdhost_cmd_int + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
-            SDCardBase->sd_Read = (APTR)((ULONG)sdhost_read + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
-            SDCardBase->sd_Write = (APTR)((ULONG)sdhost_write + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+            SDCardBase->sd_PowerCycle = (APTR)sdhost_powerCycle;
+            SDCardBase->sd_SetLED = (APTR)sdhost_led;
+            SDCardBase->sd_GetBaseClock = (APTR)sdhost_getclock;
+            SDCardBase->sd_CardInit = (APTR)sdhost_card_init;
+            SDCardBase->sd_CMD = (APTR)sdhost_cmd;
+            SDCardBase->sd_CMD_int = (APTR)sdhost_cmd_int;
+            SDCardBase->sd_Read = (APTR)sdhost_read;
+            SDCardBase->sd_Write = (APTR)sdhost_write;
 #else
-            SDCardBase->sd_PowerCycle = (APTR)((ULONG)powerCycle + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
-            SDCardBase->sd_SetLED = (APTR)((ULONG)led + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
-            SDCardBase->sd_GetBaseClock = (APTR)((ULONG)getclock + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
-            SDCardBase->sd_CMD = (APTR)((ULONG)cmd + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
-            SDCardBase->sd_CMD_int = (APTR)((ULONG)cmd_int + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
-            SDCardBase->sd_CardInit = (APTR)((ULONG)sd_card_init + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
-            SDCardBase->sd_Read = (APTR)((ULONG)sd_read + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
-            SDCardBase->sd_Write = (APTR)((ULONG)sd_write + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+            SDCardBase->sd_PowerCycle = (APTR)powerCycle;
+            SDCardBase->sd_SetLED = (APTR)led;
+            SDCardBase->sd_GetBaseClock = (APTR)getclock;
+            SDCardBase->sd_CMD = (APTR)cmd;
+            SDCardBase->sd_CMD_int = (APTR)cmd_int;
+            SDCardBase->sd_CardInit = (APTR)sd_card_init;
+            SDCardBase->sd_Read = (APTR)sd_read;
+            SDCardBase->sd_Write = (APTR)sd_write;
 #endif
-            SDCardBase->sd_Delay = (APTR)((ULONG)delay + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+            SDCardBase->sd_Delay = (APTR)delay;
 
             SumLibrary((struct Library*)SDCardBase);
 
@@ -390,6 +272,27 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                     RawDoFmt("[brcm-sdhc] Overclocking to %ld MHz requested\n", &clock, (APTR)putch, NULL);
                     SDCardBase->sd_Overclock = 1000000 * clock;
                 }
+            }
+
+            if ((cmd = FindToken(cmdline, "sd.verbose=")))
+            {
+                UBYTE verbose = 0;
+
+                for (int i=0; i < 3; i++)
+                {
+                    if (cmd[11 + i] < '0' || cmd[11 + i] > '9')
+                        break;
+
+                    verbose = verbose * 10 + cmd[9 + i] - '0';
+                }
+
+                if (verbose > 10)
+                    verbose = 10;
+
+                SDCardBase->sd_Verbose = verbose;
+            }
+            else {
+                SDCardBase->sd_Verbose = 0;
             }
 
             /* Get VC4 physical address of mailbox interface. Subsequently it will be translated to m68k physical address */
@@ -615,7 +518,7 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                         if (unit == 0 && SDCardBase->sd_HideUnit0)
                             continue;
 
-                        APTR entry = (APTR)((ULONG)UnitTask + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);;
+                        APTR entry = (APTR)UnitTask;
                         struct Task *task = AllocMem(sizeof(struct Task), MEMF_PUBLIC | MEMF_CLEAR);
                         struct MemList *ml = AllocMem(sizeof(struct MemList) + 2*sizeof(struct MemEntry), MEMF_PUBLIC | MEMF_CLEAR);
                         ULONG *stack = AllocMem(UNIT_TASK_STACKSIZE * sizeof(ULONG), MEMF_PUBLIC | MEMF_CLEAR);

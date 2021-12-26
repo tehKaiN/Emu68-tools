@@ -24,11 +24,6 @@
 #include "sdcard.h"
 #include "emmc.h"
 
-static void putch(UBYTE data asm("d0"), APTR ignore asm("a3"))
-{
-    *(UBYTE*)0xdeadbeef = data;
-}
-
 ULONG getclock(struct SDCardBase *SDCardBase)
 {
     ULONG clock = SDCardBase->get_clock_rate(1, SDCardBase);

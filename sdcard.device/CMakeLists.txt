@@ -3,11 +3,17 @@ project(brcm-sdhc VERSION 0.8.0)
 get_verstring(VERSTRING)
 
 add_link_options(-ffreestanding -nostdlib -nostartfiles -Wl,-e_rom_start -Wl,-T${CMAKE_CURRENT_SOURCE_DIR}/ldscript.lds)
-add_compile_options(-Os -m68020 -fomit-frame-pointer -mno-bitfield)
+add_compile_options(-Os -m68040 -msmall-code -mpcrel -mregparm=4 -fomit-frame-pointer)
 add_compile_definitions(PRIVATE VERSION_STRING="${VERSTRING}")
+
+set_source_files_properties(src/main.c PROPERTIES COMPILE_FLAGS -mno-pcrel)
 
 add_executable(brcm-sdhc.device
     src/main.c
+    src/expunge.c
+    src/extfunc.c
+    src/open.c
+    src/close.c
     src/init.c
     src/beginio.c
     src/abortio.c
@@ -15,6 +21,7 @@ add_executable(brcm-sdhc.device
     src/emmc.c
     src/sdhost.c
     src/unit_task.c
+    src/findtoken.c
 )
 
 add_custom_command(
