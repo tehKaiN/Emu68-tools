@@ -14,7 +14,7 @@
 #define XSTR(s) STR(s)
 
 #define VC4CARD_VERSION  0
-#define VC4CARD_REVISION 1
+#define VC4CARD_REVISION 2
 #define VC4CARD_PRIORITY 0
 #define MBOX_SIZE        (512 * 4)
 
