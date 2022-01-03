@@ -246,6 +246,29 @@ int blank_screen(int blank, struct VC4Base *VC4Base)
     return LE32(FBReq[5]) & 1;
 }
 
+static void putch(UBYTE data asm("d0"), APTR ignore asm("a3"))
+{
+    *(UBYTE*)0xdeadbeef = data;
+}
+
+void release_framebuffer(struct VC4Base *VC4Base)
+{
+    struct ExecBase *SysBase = VC4Base->vc4_SysBase;
+    ULONG *FBReq = VC4Base->vc4_Request;
+
+    /* Release framebuffer */
+    FBReq[0] = LE32(4*6);
+    FBReq[1] = 0;
+    FBReq[2] = LE32(0x00048001);
+    FBReq[3] = LE32(0);
+    FBReq[4] = 0;
+    FBReq[5] = 0;
+
+    CacheClearE(FBReq, 4*6, CACRF_ClearD);
+    mbox_send(8, (ULONG)FBReq, VC4Base);
+    mbox_recv(8, VC4Base);
+}
+
 uint32_t upload_code(const void * code, uint32_t code_size, struct VC4Base *VC4Base)
 {
     struct ExecBase *SysBase = VC4Base->vc4_SysBase;

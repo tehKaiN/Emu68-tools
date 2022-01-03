@@ -208,16 +208,39 @@ static int FindCard(struct BoardInfo* bi asm("a0"), struct VC4Base *VC4Base asm(
     /* Find out base address of framebuffer and video memory size */
     get_vc_memory(&VC4Base->vc4_MemBase, &VC4Base->vc4_MemSize, VC4Base);
 
+    {
+        ULONG args[] = {
+            (ULONG)VC4Base->vc4_MemBase,
+            (ULONG)VC4Base->vc4_MemSize / 1024
+        };
+
+        RawDoFmt("[vc4] GPU memory at %08lx, size: %ld KB\n", args, (APTR)putch, NULL);
+    }
+
     /* Set basic data in BoardInfo structure */
 
-    /* 
-        Warning - P96 does not work well with concept of single visible framebuffer.
-        Therefore, we provide here a block of "video memory". VC4 will just permanently upload it to the framebuffer
+    /* Get the block memory which was reserved by Emu68 on early startup. It has proper caching already */
+    key = DT_OpenKey("/emu68");
+    if (key)
+    {
+        const ULONG *reg = DT_GetPropValue(DT_FindProperty(key, "vc4-mem"));
 
-        TODO: Free this memory once driver deinitializes.
-    */
-    bi->MemorySize = 0x07000000;
-    bi->MemoryBase = (APTR)0x01000000;
+        if (reg == NULL)
+        {
+            FreeMem(VC4Base->vc4_RequestBase, MBOX_SIZE);          
+            CloseLibrary((struct Library *)VC4Base->vc4_DOSBase);
+            CloseLibrary((struct Library *)VC4Base->vc4_IntuitionBase);
+            CloseLibrary((struct Library *)VC4Base->vc4_ExpansionBase);
+            
+            return 0;
+        }
+
+        bi->MemoryBase = (APTR)reg[0];
+        bi->MemorySize = reg[1];
+
+        DT_CloseKey(key);
+    }
+
     bi->RegisterBase = NULL;
 
     {
