@@ -17,7 +17,7 @@ struct Emu040Base {
 #define PRODUCT_ID          0x01
 #define SERIAL_NUMBER       0x4c32 
 #define LIB_VERSION         1
-#define LIB_REVISION        0
+#define LIB_REVISION        3
 #define LIB_PRIORITY        0
 
 #define LIB_POSSIZE         (sizeof(struct Emu040Base))
