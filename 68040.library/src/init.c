@@ -61,6 +61,8 @@ static void putch(UBYTE data asm("d0"), APTR ignore asm("a3"))
     *(UBYTE*)0xdeadbeef = data;
 }
 
+
+
 CONST_STRPTR FindToken(CONST_STRPTR string, CONST_STRPTR token)
 {
     CONST_STRPTR ret = NULL;
@@ -109,7 +111,7 @@ CONST_STRPTR FindToken(CONST_STRPTR string, CONST_STRPTR token)
 
 APTR Init(struct ExecBase *SysBase asm("a6"))
 {
-    struct Library *LibraryBase = NULL;
+    struct Emu040Base *LibraryBase = NULL;
     struct ExpansionBase *ExpansionBase = NULL;
     struct CurrentBinding binding;
     APTR DeviceTreeBase;
@@ -123,28 +125,32 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
 
     if (base_pointer)
     {
-        ULONG relFuncTable[] = {
-            (ULONG)L_Open + (ULONG)binding.cb_ConfigDev->cd_BoardAddr,
-            (ULONG)L_Close + (ULONG)binding.cb_ConfigDev->cd_BoardAddr,
-            (ULONG)L_Expunge + (ULONG)binding.cb_ConfigDev->cd_BoardAddr,
-            (ULONG)L_ExtFunc + (ULONG)binding.cb_ConfigDev->cd_BoardAddr,
-            -1
-        };
-        LibraryBase = (struct Library *)((UBYTE *)base_pointer + LIB_NEGSIZE);
+        ULONG relFuncTable[5];
+        
+        relFuncTable[0] = (ULONG)L_Open;
+        relFuncTable[1] = (ULONG)L_Close;
+        relFuncTable[2] = (ULONG)L_Expunge;
+        relFuncTable[3] = (ULONG)L_ExtFunc;
+        relFuncTable[4] =  -1;
+
+        LibraryBase = (struct Emu040Base *)((UBYTE *)base_pointer + LIB_NEGSIZE);
         MakeFunctions(LibraryBase, relFuncTable, 0);
         
-        LibraryBase->lib_Node.ln_Type = NT_LIBRARY;
-        LibraryBase->lib_Node.ln_Pri = LIB_PRIORITY;
-        LibraryBase->lib_Node.ln_Name = (STRPTR)((ULONG)deviceName + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+        LibraryBase->emu_Lib.lib_Node.ln_Type = NT_LIBRARY;
+        LibraryBase->emu_Lib.lib_Node.ln_Pri = LIB_PRIORITY;
+        LibraryBase->emu_Lib.lib_Node.ln_Name = (STRPTR)deviceName;
 
-        LibraryBase->lib_NegSize = LIB_NEGSIZE;
-        LibraryBase->lib_PosSize = LIB_POSSIZE;
-        LibraryBase->lib_Version = LIB_VERSION;
-        LibraryBase->lib_Revision = LIB_REVISION;
-        LibraryBase->lib_IdString = (STRPTR)((ULONG)deviceIdString + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);    
+        LibraryBase->emu_Lib.lib_NegSize = LIB_NEGSIZE;
+        LibraryBase->emu_Lib.lib_PosSize = LIB_POSSIZE;
+        LibraryBase->emu_Lib.lib_Version = LIB_VERSION;
+        LibraryBase->emu_Lib.lib_Revision = LIB_REVISION;
+        LibraryBase->emu_Lib.lib_IdString = (STRPTR)deviceIdString;    
 
-        SumLibrary(LibraryBase);
-        AddLibrary(LibraryBase);
+        SumLibrary((struct Library *)LibraryBase);
+        AddLibrary((struct Library *)LibraryBase);
+
+        LibraryBase->emu_CachePreDMA = emu68_CachePreDMA;
+        LibraryBase->emu_CachePostDMA = emu68_CachePostDMA;
 
         {
             UWORD new_flags = SysBase->AttnFlags & 0x8000;
@@ -197,9 +203,29 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
 
         binding.cb_ConfigDev->cd_Flags &= ~CDF_CONFIGME;
         binding.cb_ConfigDev->cd_Driver = LibraryBase;
+
+        
+        LibraryBase->emu_CachePreDMA_old = SetFunction((struct Library *)SysBase, -0x2fa, LibraryBase->emu_CachePreDMA);
+        LibraryBase->emu_CachePostDMA_old = SetFunction((struct Library *)SysBase, -0x300, LibraryBase->emu_CachePostDMA);
+
+        {
+            ULONG args[] = {
+                (ULONG)LibraryBase->emu_CachePreDMA_old, (ULONG)LibraryBase->emu_CachePreDMA
+            };
+
+            RawDoFmt("[68040] Patched CachePreDMA @ %08lx with %08lx\n", args, (APTR)putch, NULL);
+        }
+        {
+            ULONG args[] = {
+                (ULONG)LibraryBase->emu_CachePostDMA_old, (ULONG)LibraryBase->emu_CachePostDMA
+            };
+
+            RawDoFmt("[68040] Patched CachePostDMA @ %08lx with %08lx\n", args, (APTR)putch, NULL);
+        }
     }
 
     CloseLibrary((struct Library*)ExpansionBase);
+
 
     return LibraryBase;
 }
