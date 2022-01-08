@@ -125,6 +125,7 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
         {
             APTR key;
             ULONG relFuncTable[7];
+            ULONG disabled = 0;
             
             relFuncTable[0] = (ULONG)&SD_Open;
             relFuncTable[1] = (ULONG)&SD_Close;
@@ -296,6 +297,13 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                 }
             }
 
+            if (FindToken(cmdline, "sd.disable"))
+            {
+                RawDoFmt("[brcm-sdhc] brcm-sdhc.device disabled by user\n", NULL, (APTR)putch, NULL);
+
+                disabled = 1;
+            }
+
             /* Get VC4 physical address of mailbox interface. Subsequently it will be translated to m68k physical address */
             key = DT_OpenKey("/aliases");
             if (key)
@@ -433,7 +441,7 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
             }
 
             /* If both sd_MailBox and sd_SDHC are set, everything went OK and now we can add the device */
-            if (SDCardBase->sd_MailBox != NULL && SDCardBase->sd_SDHC != NULL)
+            if (SDCardBase->sd_MailBox != NULL && SDCardBase->sd_SDHC != NULL && disabled == 0)
             {
                 AddDevice((struct Device *)SDCardBase);
 
@@ -588,6 +596,7 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                     Something failed, device will not be added to the system, free allocated memory and 
                     return NULL instead
                 */
+                CloseDevice((struct IORequest *)&SDCardBase->sd_TimeReq);
                 FreeMem(base_pointer, BASE_NEG_SIZE + BASE_POS_SIZE);
                 SDCardBase = NULL;
             }
