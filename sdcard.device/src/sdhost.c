@@ -417,25 +417,30 @@ void sdhost_cmd_int(ULONG command, ULONG arg, ULONG timeout, struct SDCardBase *
     wr32(sc, HC_COMMAND, val2);
 
     if (command & SD_CMD_ISDATA) {
+        ULONG wait_flag = HC_HSTST_HAVEDATA;
+
         while(blocks--) {
             if (rd32(sc, HC_HOSTSTATUS) & HC_HSTST_MASK_ERROR_ALL)
                 break;
 
             if (val2 & HC_CMD_READ) {
-                TIMEOUT_WAIT(rd32(sc, HC_HOSTSTATUS) & HC_HSTST_HAVEDATA, timeout);
-                wr32(sc, HC_HOSTSTATUS, rd32(sc, HC_HOSTSTATUS) & HC_HSTST_HAVEDATA);
+                TIMEOUT_WAIT(rd32(sc, HC_HOSTSTATUS) & wait_flag, timeout);
+                wr32(sc, HC_HOSTSTATUS, rd32(sc, HC_HOSTSTATUS) & wait_flag);
                 sdhost_transfer_block(command & SD_CMD_DAT_DIR_CH, SDCardBase); 
             }
             else {
-                TIMEOUT_WAIT(rd32(sc, HC_HOSTSTATUS) & (HC_HSTST_HAVEDATA), timeout);
-                wr32(sc, HC_HOSTSTATUS, rd32(sc, HC_HOSTSTATUS) & (HC_HSTST_HAVEDATA));
+                TIMEOUT_WAIT(rd32(sc, HC_HOSTSTATUS) & wait_flag, timeout);
+                wr32(sc, HC_HOSTSTATUS, rd32(sc, HC_HOSTSTATUS) & wait_flag);
                 sdhost_transfer_block(command & SD_CMD_DAT_DIR_CH, SDCardBase); 
+
+                wait_flag = HC_HSTST_INT_BLOCK;
             }
         }
 
-        if (val2 & HC_CMD_WRITE) {
-            TIMEOUT_WAIT(rd32(sc, HC_HOSTSTATUS) & (HC_HSTST_INT_BLOCK), timeout);
-            wr32(sc, HC_HOSTSTATUS, HC_HSTCF_INT_BLOCK);
+        if (!(val2 & HC_CMD_READ))
+        {
+            TIMEOUT_WAIT(rd32(sc, HC_HOSTSTATUS) & wait_flag, timeout);
+            wr32(sc, HC_HOSTSTATUS, rd32(sc, HC_HOSTSTATUS) & wait_flag);
         }
     }
 
