@@ -34,14 +34,12 @@ ULONG getclock(struct SDCardBase *SDCardBase)
 
 void led(int on, struct SDCardBase *SDCardBase)
 {
-    #if 0
     if (on) {
-        SDCardBase->set_led_state(130, 0, SDCardBase);
+        wr32((APTR)0xf2200000, 0x1c, 1 << 29);
     }
     else {
-        SDCardBase->set_led_state(130, 1, SDCardBase);
+        wr32((APTR)0xf2200000, 0x28, 1 << 29);
     }
-    #endif
 }
 
 int powerCycle(struct SDCardBase *SDCardBase)

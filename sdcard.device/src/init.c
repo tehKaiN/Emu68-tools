@@ -461,7 +461,13 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                 wr32((APTR)0xf2200000, 0x10, tmp);
                 wr32((APTR)0xf2200000, 0x14, 0xfff); // 0xfff - AF3, 0x924 - AF0;
 #endif
-              
+                // LED is on GPIO29
+                tmp = rd32((APTR)0xf2200000, 0x08);
+                tmp &= ~(7 << 27);
+                tmp |= 1 << 27;
+                wr32((APTR)0xf2200000, 0x08, tmp);
+
+
                 /* Enable EMMC/SDHOST clock */
                 SDCardBase->set_clock_state(1, 1, SDCardBase);
 
