@@ -333,6 +333,9 @@ static int InitCard(struct BoardInfo* bi asm("a0"), const char **ToolTypes asm("
 
     bi->WaitVerticalSync = (void *)WaitVerticalSync;
 
+    VC4Base->vc4_Phase = 128;
+    VC4Base->vc4_Scaler = 0xc0000000;
+
     for (;ToolTypes[0] != NULL; ToolTypes++)
     {
         const char *tt = ToolTypes[0];
@@ -637,8 +640,8 @@ static const ULONG mode_table[] = {
     [RGBFB_B8G8R8A8] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGBA8888) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_ABGR),
     [RGBFB_R8G8B8A8] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGBA8888) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_ARGB),
 
-    [RGBFB_R8G8B8] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB888) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
-    [RGBFB_B8G8R8] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB888) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XBGR),
+    [RGBFB_R8G8B8] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB888) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XBGR),
+    [RGBFB_B8G8R8] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB888) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
 
     [RGBFB_R5G6B5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB565) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
     [RGBFB_R5G5B5PC] = CONTROL_FORMAT(HVS_PIXEL_FORMAT_RGB555) | CONTROL_PIXEL_ORDER(HVS_PIXEL_ORDER_XRGB),
@@ -817,6 +820,11 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
 
     if (pos != VC4Base->vc4_ActivePlane)
     {
+        volatile ULONG *stat = (ULONG*)(0xf2400000 + SCALER_DISPSTAT1);
+
+        // Wait for vertical blank before updating the display list
+        do { asm volatile("nop"); } while((LE32(*stat) & 0xfff) == VC4Base->vc4_DispSize.height);
+
         *(volatile uint32_t *)0xf2400024 = LE32(pos);
         VC4Base->vc4_ActivePlane = pos;
     }
