@@ -332,6 +332,43 @@ static int InitCard(struct BoardInfo* bi asm("a0"), const char **ToolTypes asm("
     bi->SetReadPlane = (void *)SetReadPlane;
 
     bi->WaitVerticalSync = (void *)WaitVerticalSync;
+    
+    RawDoFmt("[vc4] Measuring refresh rate\n", NULL, (APTR)putch, NULL);
+
+    Disable();
+
+    volatile ULONG *stat = (ULONG*)(0xf2400000 + SCALER_DISPSTAT1);
+
+    ULONG cnt1 = *stat & LE32(0x3f << 12);
+    ULONG cnt2;
+
+    /* Wait for the very next frame */
+    do { cnt2 = *stat & LE32(0x3f << 12); } while(cnt2 == cnt1);
+    
+    /* Get current tick number */
+    ULONG tick1 = LE32(*(volatile uint32_t*)0xf2003004);
+
+    /* Wait for the very next frame */
+    do { cnt1 = *stat & LE32(0x3f << 12); } while(cnt2 == cnt1);
+
+    /* Get current tick number */
+    ULONG tick2 = LE32(*(volatile uint32_t*)0xf2003004);
+
+    Enable();
+
+    double delta = (double)(tick2 - tick1);
+    double hz = 1000000.0 / delta;
+
+    ULONG mHz = 1000.0 * hz;
+
+    ULONG args[] = {
+        mHz / 1000,
+        mHz % 1000
+    };
+
+    RawDoFmt("[vc4] Detected refresh rate of %ld.%03ld Hz\n", args, (APTR)putch, NULL);
+
+    VC4Base->vc4_VertFreq = (ULONG)(hz+0.5);
 
     VC4Base->vc4_Phase = 128;
     VC4Base->vc4_Scaler = 0xc0000000;
@@ -359,6 +396,22 @@ static int InitCard(struct BoardInfo* bi asm("a0"), const char **ToolTypes asm("
             VC4Base->vc4_Phase = num;
             args[0] = VC4Base->vc4_Phase;
             RawDoFmt("[vc4] Setting VC4 phase to %ld\n", args, (APTR)putch, NULL);
+        }
+        else if (_strcmp(tt, "VC4_VERT") == '=')
+        {
+            const char *c = &tt[10];
+            ULONG num = 0;
+
+            while (*c) {
+                if (*c < '0' || *c > '9')
+                    break;
+                
+                num = num * 10 + (*c++ - '0');
+            }
+
+            VC4Base->vc4_VertFreq = num;
+            args[0] = VC4Base->vc4_VertFreq;
+            RawDoFmt("[vc4] Setting vertical frequency to %ld\n", args, (APTR)putch, NULL);
         }
         else if (_strcmp(tt, "VC4_SCALER") == '=')
         {
@@ -623,10 +676,10 @@ UWORD SetSwitch(struct BoardInfo *b asm("a0"), UWORD enabled asm("d0"))
 
         switch(enabled) {
             case 0:
-                //blank_screen(1, VC4Base);
+                blank_screen(1, VC4Base);
                 break;
             default:
-                //blank_screen(0, VC4Base);
+                blank_screen(0, VC4Base);
                 break;
         }
     }
@@ -725,13 +778,15 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
     }
     else
     {
+        ULONG factor_y = (b->ModeInfo->Flags & GMF_DOUBLESCAN) ? 0x20000 : 0x10000;
         scale_x = 0x10000 * b->ModeInfo->Width / VC4Base->vc4_DispSize.width;
-        scale_y = 0x10000 * b->ModeInfo->Height / VC4Base->vc4_DispSize.height;
+        scale_y = factor_y * b->ModeInfo->Height / VC4Base->vc4_DispSize.height;
+
         recip_x = 0xffffffff / scale_x;
         recip_y = 0xffffffff / scale_y;
 
         // Select larger scaling factor from X and Y, but it need to fit
-        if (((0x10000 * b->ModeInfo->Height) / scale_x) > VC4Base->vc4_DispSize.height) {
+        if (((factor_y * b->ModeInfo->Height) / scale_x) > VC4Base->vc4_DispSize.height) {
             scale = scale_y;
         }
         else {
@@ -739,7 +794,7 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
         }
 
         calc_width = (0x10000 * b->ModeInfo->Width) / scale;
-        calc_height = (0x10000 * b->ModeInfo->Height) / scale;
+        calc_height = (factor_y * b->ModeInfo->Height) / scale;
 
         offset_x = (VC4Base->vc4_DispSize.width - calc_width) >> 1;
         offset_y = (VC4Base->vc4_DispSize.height - calc_height) >> 1;
@@ -801,7 +856,10 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
 
             displist[pos + 9] = LE32(0);
             displist[pos + 10] = LE32((scale << 8) | VC4Base->vc4_Scaler | VC4Base->vc4_Phase);
-            displist[pos + 11] = displist[pos + 10];
+            if (b->ModeInfo->Flags & GMF_DOUBLESCAN)
+                displist[pos + 11] = LE32(((scale << 7) & ~0xff) | VC4Base->vc4_Scaler | VC4Base->vc4_Phase);
+            else
+                displist[pos + 11] = LE32((scale << 8) | VC4Base->vc4_Scaler | VC4Base->vc4_Phase);
             displist[pos + 12] = LE32(0);
 
             displist[pos + 13] = LE32(0xff4);
@@ -823,7 +881,7 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
         volatile ULONG *stat = (ULONG*)(0xf2400000 + SCALER_DISPSTAT1);
 
         // Wait for vertical blank before updating the display list
-        do { asm volatile("nop"); } while((LE32(*stat) & 0xfff) == VC4Base->vc4_DispSize.height);
+        do { asm volatile("nop"); } while((LE32(*stat) & 0xfff) != VC4Base->vc4_DispSize.height);
 
         *(volatile uint32_t *)0xf2400024 = LE32(pos);
         VC4Base->vc4_ActivePlane = pos;
@@ -946,7 +1004,12 @@ LONG ResolvePixelClock (__REGA0(struct BoardInfo *b), __REGA1(struct ModeInfo *m
         RawDoFmt("[vc4] ResolvePixelClock %lx %ld %lx\n", args, (APTR)putch, NULL);
     }
 
-    mode_info->PixelClock = CLOCK_HZ;
+    ULONG clock = mode_info->HorTotal * mode_info->VerTotal * VC4Base->vc4_VertFreq;
+
+    if (b->ModeInfo->Flags & GMF_DOUBLESCAN)
+        clock <<= 1;
+
+    mode_info->PixelClock = clock;
     mode_info->pll1.Clock = 0;
     mode_info->pll2.ClockDivide = 1;
 
@@ -954,8 +1017,14 @@ LONG ResolvePixelClock (__REGA0(struct BoardInfo *b), __REGA1(struct ModeInfo *m
 }
 
 ULONG GetPixelClock (__REGA0(struct BoardInfo *b), __REGA1(struct ModeInfo *mode_info), __REGD0(ULONG index), __REGD7(RGBFTYPE format)) {
-    // Just return 100MHz.
-    return CLOCK_HZ;
+    struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
+    
+    ULONG clock = mode_info->HorTotal * mode_info->VerTotal * VC4Base->vc4_VertFreq;
+
+    if (b->ModeInfo->Flags & GMF_DOUBLESCAN)
+        clock <<= 1;
+
+    return clock;
 }
 
 // None of these five really have to do anything.
@@ -986,7 +1055,7 @@ void WaitVerticalSync (__REGA0(struct BoardInfo *b), __REGD0(BOOL toggle)) {
     volatile ULONG *stat = (ULONG*)(0xf2400000 + SCALER_DISPSTAT1);
 
     // Wait until current vbeampos is lower than the one obtained above
-    do { asm volatile("nop"); } while((LE32(*stat) & 0xfff) == VC4Base->vc4_DispSize.height);
+    do { asm volatile("nop"); } while((LE32(*stat) & 0xfff) != VC4Base->vc4_DispSize.height);
 }
 
 #if 0
