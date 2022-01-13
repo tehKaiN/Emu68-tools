@@ -3,7 +3,7 @@ project(Emu68\ VC4 VERSION 0.2.0)
 get_verstring(VERSTRING)
 
 add_link_options(-ffreestanding -nostdlib -nostartfiles -Wl,-e,__start)
-add_compile_options(-Os -m68020 -fomit-frame-pointer -mno-bitfield)
+add_compile_options(-Os -m68040 -fomit-frame-pointer -mno-bitfield)
 add_compile_definitions(PRIVATE VERSION_STRING="${VERSTRING}")
 
 add_executable(emu68-vc4.card
