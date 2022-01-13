@@ -239,9 +239,10 @@ int blank_screen(int blank, struct VC4Base *VC4Base)
     FBReq[5] = blank ? 1 : 0;
     FBReq[6] = 0;
 
-    CacheClearE(FBReq, len, CACRF_ClearD);
+    CachePreDMA(FBReq, &len, 0);
     mbox_send(8, (ULONG)FBReq, VC4Base);
     mbox_recv(8, VC4Base);
+    CachePostDMA(FBReq, &len, 0);
 
     return LE32(FBReq[5]) & 1;
 }
