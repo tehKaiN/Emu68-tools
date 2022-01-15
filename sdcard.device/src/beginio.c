@@ -205,7 +205,7 @@ void int_handle_scsi(struct IOStdReq *io, struct SDCardBase * SDCardBase)
             lba = (lba << 8) | cmd->scsi_Command[3];
             blocks = cmd->scsi_Command[4];
 
-            if (lba >= unit->su_BlockCount || (lba + blocks) >= unit->su_BlockCount) {
+            if (lba >= unit->su_BlockCount || (lba + blocks) > unit->su_BlockCount) {
                 io->io_Error = IOERR_BADADDRESS;
                 iostd->io_Actual = 0;
             }
@@ -235,7 +235,7 @@ void int_handle_scsi(struct IOStdReq *io, struct SDCardBase * SDCardBase)
             lba = (lba << 8) | cmd->scsi_Command[5];
             blocks =(cmd->scsi_Command[7] << 8) | cmd->scsi_Command[8];
 
-            if (lba >= unit->su_BlockCount || (lba + blocks) >= unit->su_BlockCount) {
+            if (lba >= unit->su_BlockCount || (lba + blocks) > unit->su_BlockCount) {
                 io->io_Error = IOERR_BADADDRESS;
                 iostd->io_Actual = 0;
             }
@@ -269,7 +269,7 @@ void int_handle_scsi(struct IOStdReq *io, struct SDCardBase * SDCardBase)
                 lba = (lba << 8) | cmd->scsi_Command[3];
                 blocks = cmd->scsi_Command[4];
 
-                if (lba >= unit->su_BlockCount || (lba + blocks) >= unit->su_BlockCount) {
+                if (lba >= unit->su_BlockCount || (lba + blocks) > unit->su_BlockCount) {
                     io->io_Error = IOERR_BADADDRESS;
                     iostd->io_Actual = 0;
                 }
@@ -305,7 +305,7 @@ void int_handle_scsi(struct IOStdReq *io, struct SDCardBase * SDCardBase)
                 lba = (lba << 8) | cmd->scsi_Command[5];
                 blocks =(cmd->scsi_Command[7] << 8) | cmd->scsi_Command[8];
 
-                if (lba >= unit->su_BlockCount || (lba + blocks) >= unit->su_BlockCount) {
+                if (lba >= unit->su_BlockCount || (lba + blocks) > unit->su_BlockCount) {
                     io->io_Error = IOERR_BADADDRESS;
                     iostd->io_Actual = 0;
                 }
@@ -522,7 +522,7 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase)
         case CMD_READ:
             offset = iostd->io_Offset / SDCardBase->sd_BlockSize;
 
-            if (offset >= unit->su_BlockCount || (offset + iostd->io_Length / SDCardBase->sd_BlockSize) >= unit->su_BlockCount) {
+            if (offset >= unit->su_BlockCount || (offset + iostd->io_Length / SDCardBase->sd_BlockSize) > unit->su_BlockCount) {
                 io->io_Error = IOERR_BADADDRESS;
                 iostd->io_Actual = 0;
             }
@@ -546,7 +546,7 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase)
             off64 |= ((unsigned long long)iostd->io_Actual) << 32;
             offset = off64 >> 9;
 
-            if (offset >= unit->su_BlockCount || (offset + iostd->io_Length / SDCardBase->sd_BlockSize) >= unit->su_BlockCount) {
+            if (offset >= unit->su_BlockCount || (offset + iostd->io_Length / SDCardBase->sd_BlockSize) > unit->su_BlockCount) {
                 io->io_Error = IOERR_BADADDRESS;
                 iostd->io_Actual = 0;
             }
@@ -573,7 +573,7 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase)
             else {
                 offset = iostd->io_Offset / SDCardBase->sd_BlockSize;
 
-                if (offset >= unit->su_BlockCount || (offset + iostd->io_Length / SDCardBase->sd_BlockSize) >= unit->su_BlockCount) {
+                if (offset >= unit->su_BlockCount || (offset + iostd->io_Length / SDCardBase->sd_BlockSize) > unit->su_BlockCount) {
                     io->io_Error = IOERR_BADADDRESS;
                     iostd->io_Actual = 0;
                 }
@@ -605,7 +605,7 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase)
                 off64 |= ((unsigned long long)iostd->io_Actual) << 32;
                 offset = off64 >> 9;
 
-                if (offset >= unit->su_BlockCount || (offset + iostd->io_Length / SDCardBase->sd_BlockSize) >= unit->su_BlockCount) {
+                if (offset >= unit->su_BlockCount || (offset + iostd->io_Length / SDCardBase->sd_BlockSize) > unit->su_BlockCount) {
                     io->io_Error = IOERR_BADADDRESS;
                     iostd->io_Actual = 0;
                 }
