@@ -78,13 +78,18 @@ struct Window * createMainWindow(int req_width, int req_height)
     return displayWin;
 }
 
-#define ARG_TEMPLATE "MAXCPU/N,MAXITER/N,WIDTH/N,HEIGHT/N,RAYDEPTH/N,EXPLICIT/S"
-#define ARG_MAXCPU 0
-#define ARG_MAXITER 1
-#define ARG_WIDTH 2
-#define ARG_HEIGHT 3
-#define ARG_RAYDEPTH 4
-#define ARG_EXPLICIT 5
+#define ARG_TEMPLATE "THREADS/K/N,MAXITER/K/N,WIDTH/K/N,HEIGHT/K/N,RAYDEPTH/K/N,EXPLICIT/S"
+
+enum {
+    ARG_MAXCPU,
+    ARG_MAXITER,
+    ARG_WIDTH,
+    ARG_HEIGHT,
+    ARG_RAYDEPTH,
+    ARG_EXPLICIT,
+    
+    ARG_COUNT
+};
 
 struct TimerBase *TimerBase = NULL;
 struct Library * P96Base = NULL;
@@ -92,11 +97,11 @@ struct Library * P96Base = NULL;
 int main()
 {
     APTR ProcessorBase;
-    ULONG args[6] = { 0, 0, 0, 0, 0, 0 };
+    ULONG args[ARG_COUNT] = { 0, 0, 0, 0, 0, 0, };
     struct RDArgs *rda;
-    int max_cpus = 0;
-    int max_iter = 0;
-    int req_width = 0, req_height = 0;
+    int max_cpus = 1;
+    int max_iter = 8;
+    int req_width = 320, req_height = 240;
     char tmpbuf[200];
     int explicit_mode = 0;
     struct MsgPort *timerPort = CreateMsgPort();
@@ -109,6 +114,54 @@ int main()
     struct BitMap *outputBMap = NULL;
 
     ULONG coreCount = 1;
+
+    SetTaskPri(FindTask(NULL), 5);
+
+    rda = ReadArgs(ARG_TEMPLATE, args, NULL);
+    if (rda != NULL)
+    {
+        LONG *ptr = (LONG *)args[ARG_MAXCPU];
+        if (ptr)
+            max_cpus = *ptr;
+
+        ptr = (LONG *)args[ARG_RAYDEPTH];
+        if (ptr) {
+            maximal_ray_depth = *ptr;
+            if (maximal_ray_depth < 2)
+                maximal_ray_depth = 2;
+            if (maximal_ray_depth > 1000)
+                maximal_ray_depth = 1000;
+        }
+
+        ptr = (LONG *)args[ARG_MAXITER];
+        if (ptr)
+        {
+            max_iter = *ptr;
+            if (max_iter < 2)
+                max_iter = 2;
+            else if (max_iter > 10000)
+                max_iter = 10000;
+        }
+
+        ptr = (LONG *)args[ARG_WIDTH];
+        if (ptr)
+            req_width = *ptr;
+
+        if (req_width && req_width < 160)
+            req_width = 160;
+
+        ptr = (LONG *)args[ARG_HEIGHT];
+        if (ptr)
+            req_height = *ptr;
+
+        if (req_height && req_height < 128)
+            req_height = 128;
+
+        if (max_iter == 0)
+            max_iter = 16;
+
+        explicit_mode = args[ARG_EXPLICIT];
+    }
 
     P96Base = OpenLibrary("Picasso96API.library", 0);
 
@@ -131,50 +184,6 @@ int main()
             TimerBase = (struct TimerBase *)tr->tr_node.io_Device;
         }
     } else return 0;
-
-    rda = ReadArgs(ARG_TEMPLATE, args, NULL);
-    if (rda != NULL)
-    {
-        LONG *ptr = (LONG *)args[ARG_MAXCPU];
-        if (ptr)
-            max_cpus = *ptr;
-
-        ptr = (LONG *)args[ARG_RAYDEPTH];
-        if (ptr) {
-            maximal_ray_depth = *ptr;
-            if (maximal_ray_depth < 2)
-                maximal_ray_depth = 2;
-        }
-
-        ptr = (LONG *)args[ARG_MAXITER];
-        if (ptr)
-        {
-            max_iter = *ptr;
-            if (max_iter < 2)
-                max_iter = 2;
-            else if (max_iter > 10000)
-                max_iter = 10000;
-        }
-
-        ptr = (LONG *)args[ARG_WIDTH];
-        if (ptr)
-            req_width = *ptr;
-
-        if (req_width && req_width < 160)
-            req_width = 160;
-
-        if (req_height && req_height < 128)
-            req_height = 128;
-
-        ptr = (LONG *)args[ARG_HEIGHT];
-        if (ptr)
-            req_height = *ptr;
-        
-        if (max_iter == 0)
-            max_iter = 16;
-
-        explicit_mode = args[ARG_EXPLICIT];
-    }
 
     coreCount = max_cpus;
 
@@ -202,6 +211,11 @@ int main()
 
         Printf("[SMP-Smallpt] Created window with inner size of %ldx%ld\n", width, height);
         Printf("[SMP-Smallpt] Tiles amount %ldx%ld\n", width / 32, height / 32);
+        if (explicit_mode)
+            Printf("[SMP-Smallpt] Explicit mode enabled\n");
+        Printf("[SMP-Smallpt] Number of threads: %ld\n", coreCount);
+        Printf("[SMP-Smallpt] Ray depth: %ld\n", maximal_ray_depth);
+        Printf("[SMP-Smallpt] Number of iterations: %ld\n", max_iter);
 
         outputBMap = AllocBitMap(
                         width,
@@ -229,7 +243,7 @@ int main()
         Printf("[SMP-Smallpt] Creating renderer task\n");
 
         renderer = NewCreateTask(TASKTAG_NAME,      (Tag)"SMP-Smallpt Master",
-                                TASKTAG_PRI,        0,
+                                TASKTAG_PRI,        3,
                                 TASKTAG_PC,         (Tag)Renderer,
                                 TASKTAG_ARG1,       (Tag)*(struct ExecBase **)4,
                                 TASKTAG_ARG2,       (Tag)mainPort,
@@ -260,9 +274,7 @@ int main()
         WaitPort(mainPort);
         GetMsg(mainPort);
 
-#if 0
-        D(bug("[SMP-Smallpt] %s: enter main loop\n", __func__);)
-#endif
+        Printf("[SMP-Smallpt] enter main loop\n");
 
         GetSysTime(&start_time);
 
@@ -317,13 +329,15 @@ int main()
                                             msg->mm_Body.RedrawTile.TileX * TILE_SIZE, 
                                             msg->mm_Body.RedrawTile.TileY * TILE_SIZE,
                                            TILE_SIZE, TILE_SIZE);
+                                
 
                                 BltBitMapRastPort (outputBMap, 
                                             msg->mm_Body.RedrawTile.TileX * TILE_SIZE, 
                                             msg->mm_Body.RedrawTile.TileY * TILE_SIZE,
                                             displayWin->RPort, 
-                                            displayWin->BorderLeft + msg->mm_Body.RedrawTile.TileX * TILE_SIZE, displayWin->BorderTop + msg->mm_Body.RedrawTile.TileY * TILE_SIZE,
-                                            TILE_SIZE, TILE_SIZE, 0xC0); 
+                                            displayWin->BorderLeft + msg->mm_Body.RedrawTile.TileX * TILE_SIZE, 
+                                            displayWin->BorderTop + msg->mm_Body.RedrawTile.TileY * TILE_SIZE,
+                                            TILE_SIZE, TILE_SIZE, 0xC0);
                                 break;
                             
                             case MSG_STATS:
@@ -359,9 +373,9 @@ int main()
                 }
             }
         }
-#if 0
-        D(bug("[SMP-Smallpt] %s: Send DIE msg to renderer\n", __func__);)
-#endif
+
+        Printf("[SMP-Smallpt] Send DIE msg to renderer\n", __func__);
+
         struct MyMessage quitmsg;
         quitmsg.mm_Message.mn_ReplyPort = mainPort;
         quitmsg.mm_Message.mn_Length = sizeof(quitmsg);
@@ -383,34 +397,9 @@ int main()
         FreeMem(outBMRastPort, sizeof(struct RastPort));
         FreeBitMap(outputBMap);
         FreeMem(workBuffer, width * height * sizeof(ULONG));
-
-#if 0
-D(bug("[SMP-Smallpt] %s: goodbye\n", __func__);)
-
-        for (int ty = 0; ty < height/32; ty++)
-        {
-            for (int tx = 0; tx < width/32; tx++)
-            {
-                D(bug("[SMP-Smallpt] %s: Rendering tile %d,%d\n", __func__, tx, ty));
-
-                render_tile(width, height, 1024, tx, ty, workBuffer);
-
-                D(bug("[SMP-Smallpt] %s: Redrawing\n", __func__));
-
-                WritePixelArray(workBuffer,
-                                            tx*32, ty*32, width * sizeof(ULONG),
-                                            outBMRastPort,
-                                            tx*32, ty*32,
-                                            32, 32,
-                                            RECTFMT_ARGB);
-
-                BltBitMapRastPort (outputBMap, tx*32, ty*32,
-                    displayWin->RPort, displayWin->BorderLeft + tx*32, displayWin->BorderTop + ty*32,
-                    32, 32, 0xC0); 
-            }
-        }
-#endif
     }
+
+    FreeArgs(rda);
 
     return 0;
 }

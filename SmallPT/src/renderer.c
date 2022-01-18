@@ -24,9 +24,9 @@ struct Worker {
     char *          name;
 };
 
-struct MyMessage *AllocMyMessage(struct MinList *msgPool)
+struct MyMessage *AllocMyMessage(struct List *msgPool)
 {
-    struct MyMessage *msg = (struct MyMessage *)RemHead((struct List *)msgPool);
+    struct MyMessage *msg = (struct MyMessage *)RemHead(msgPool);
     if (msg)
     {
         msg->mm_Message.mn_Length = sizeof(struct MyMessage);
@@ -35,9 +35,9 @@ struct MyMessage *AllocMyMessage(struct MinList *msgPool)
     return msg;
 }
 
-void FreeMyMessage(struct MinList *msgPool, struct MyMessage *msg)
+void FreeMyMessage(struct List *msgPool, struct MyMessage *msg)
 {
-    AddHead((struct List *)msgPool, &msg->mm_Message.mn_Node);
+    AddHead(msgPool, &msg->mm_Message.mn_Node);
 }
 
 void Renderer(struct ExecBase *ExecBase, struct MsgPort *ParentMailbox)
@@ -55,7 +55,7 @@ void Renderer(struct ExecBase *ExecBase, struct MsgPort *ParentMailbox)
     int tasks_in = 0;
     int tasks_out = 0;
     int tasks_work = 0;
-    ULONG workerStack = 0x100000 + maximal_ray_depth * 2048;
+    ULONG workerStack = 0x100000 + maximal_ray_depth * 8192;
     int expl_mode = 0;
 
     //Printf("[SMP-Smallpt-Renderer] Renderer started, ParentMailBox = %p\n", ParentMailbox);
@@ -66,15 +66,15 @@ void Renderer(struct ExecBase *ExecBase, struct MsgPort *ParentMailbox)
     {
         struct Message startup;
         int stayAlive = TRUE;
-        struct MinList workList;
-        struct MinList doneList;
-        struct MinList msgPool;
+        struct List workList;
+        struct List doneList;
+        struct List msgPool;
         struct tileWork *workPackages;
         struct Worker *workers;
 
-        NewList((struct List *)&workList);
-        NewList((struct List *)&doneList);
-        NewList((struct List *)&msgPool);
+        NewList(&workList);
+        NewList(&doneList);
+        NewList(&msgPool);
 
         /* Prepare initial message and wait for startup msg */
         startup.mn_Length = sizeof(startup);
@@ -135,7 +135,7 @@ void Renderer(struct ExecBase *ExecBase, struct MsgPort *ParentMailbox)
         {
             workPackages[i].x = i % (width / TILE_SIZE);
             workPackages[i].y = i / (width / TILE_SIZE);
-            AddHead((struct List *)&workList, (struct Node *)&workPackages[i].node);
+            AddTail((struct List *)&workList, (struct Node *)&workPackages[i].node);
         }
 
         messages = AllocMem(sizeof(struct MyMessage) * numberOfCores * 10, MEMF_PUBLIC | MEMF_CLEAR);

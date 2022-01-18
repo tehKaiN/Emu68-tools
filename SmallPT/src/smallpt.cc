@@ -9,6 +9,31 @@
 
 #include "renderer.h"
 
+static inline double _sin(double x)
+{
+    double ret;
+    asm volatile("fsin.x %1, %0":"=f"(ret):"f"(x));
+    return ret;
+}
+
+static inline double _cos(double x)
+{
+    double res;
+
+    asm volatile("fcos.x %1, %0":"=f"(res):"f"(x));
+
+    return res;
+}
+
+static inline double _sqrt(double x)
+{
+    double res;
+
+    asm volatile("fsqrt.x %1, %0":"=f"(res):"f"(x));
+
+    return res;
+}
+
 struct Vec {        // Usage: time ./smallpt 5000 && xv image.ppm
     double x;
     double y;
@@ -25,7 +50,7 @@ struct Vec {        // Usage: time ./smallpt 5000 && xv image.ppm
     Vec operator-(const Vec &b) const { return Vec(x - b.x, y - b.y, z - b.z); } 
     Vec operator*(double b) const { return Vec(x * b, y * b, z * b); } 
     Vec mult(const Vec &b) const { return Vec(x * b.x, y * b.y, z * b.z); } 
-    Vec& norm() { return *this = *this * (1/sqrt(x * x + y * y + z * z)); } 
+    Vec& norm() { return *this = *this * (1/_sqrt(x * x + y * y + z * z)); } 
     double dot(const Vec &b) const { return x * b.x + y * b.y + z * b.z; } // cross: 
     Vec operator%(Vec &b){ return Vec(y * b.z - z * b.y, z * b.x - x * b.z, x * b.y - y * b.x);} 
 }; 
@@ -55,7 +80,7 @@ struct Sphere
         if (det < 0)
             return 0;
         else
-            det = sqrt(det);
+            det = _sqrt(det);
         return (t = b - det) > eps ? t : ((t = b + det) > eps ? t : 0);
     } 
 }; 
@@ -77,12 +102,12 @@ Sphere spheres[] = {//Scene: radius, position, emission, color, material
 
 const int numSpheres = sizeof(spheres)/sizeof(Sphere);
 
-inline double clamp(double x)
+static inline double clamp(double x)
 {
     return x<0 ? 0 : x>1 ? 1 : x;
 } 
 
-inline int toInt(double x)
+static inline int toInt(double x)
 {
     return int(pow(clamp(x),1/2.2)*255+.5);
 } 
@@ -94,9 +119,7 @@ inline bool intersect(const Ray &r, double &t, int &id)
     return t<inf; 
 }
 
-int maximal_ray_depth = 1000;
-
-// ca. 650bytes per ray depth, 650KB stack required for max ray depth of 1000
+int maximal_ray_depth = 20;
 
 Vec radiance_expl(struct Task *me, const Ray &r, int depth, unsigned short *Xi,int E=1){
   double t;                               // distance to intersection
@@ -106,39 +129,17 @@ Vec radiance_expl(struct Task *me, const Ray &r, int depth, unsigned short *Xi,i
   Vec x=r.o+r.d*t, n=(x-obj.p).norm(), nl=n.dot(r.d)<0?n:n*-1, f=obj.c;
   double p = f.x>f.y && f.x>f.z ? f.x : f.y>f.z ? f.y : f.z; // max refl
   depth++;
-#if 0
-  // Since we do not have automaticly expanding stack, check if there is still
-  // room for further recurencies
-  {
-      ULONG *sp = (ULONG *)AROS_GET_SP;
-      SIPTR diff = 0;
-#if AROS_STACK_GROWS_DOWNWARDS
-      diff = (SIPTR)sp - (SIPTR)me->tc_SPLower;
-#else
-      diff = (SIPTR)me->tc_SPUpper - (SIPTR)sp;
-#endif
-      if (diff < AROS_STACKSIZE / 2)
-      {
-          bug("[SMP-SmallPT-Task] Stack nearly exhausted after %d iterations (%dkB left of %dkB total), breaking recurrence\n", depth, (diff + 512) / 1024,
-              ((IPTR)me->tc_SPUpper - (IPTR)me->tc_SPLower + 512) / 1024);
-          return obj.e;
-      }
-  }
-  #endif
-  #if 0
-  // If depth larger than maximal_ray_depth do not use Russian roulette, give up unconditionally
-  // because AROS does not have automatic stack expansion
+
   if (depth > maximal_ray_depth)
     return obj.e*E;
   else 
-  #endif
   if (depth>10||!p) { // From depth 10 start Russian roulette
        if (erand48(Xi)<p) f=f*(1/p); else return obj.e*E;
     }
   if (obj.refl == DIFF){                  // Ideal DIFFUSE reflection
-    double r1=2*M_PI*erand48(Xi), r2=erand48(Xi), r2s=sqrt(r2);
+    double r1=2*M_PI*erand48(Xi), r2=erand48(Xi), r2s=_sqrt(r2);
     Vec w=nl, u=((fabs(w.x)>.1?Vec(0,1):Vec(1))%w).norm(), v=w%u;
-    Vec d = (u*cos(r1)*r2s + v*sin(r1)*r2s + w*sqrt(1-r2)).norm();
+    Vec d = (u*_cos(r1)*r2s + v*_sin(r1)*r2s + w*_sqrt(1-r2)).norm();
 
     // Loop over any lights
     Vec e;
@@ -147,12 +148,12 @@ Vec radiance_expl(struct Task *me, const Ray &r, int depth, unsigned short *Xi,i
       if (s.e.x<=0 && s.e.y<=0 && s.e.z<=0) continue; // skip non-lights
 
       Vec sw=s.p-x, su=((fabs(sw.x)>.1?Vec(0,1):Vec(1))%sw).norm(), sv=sw%su;
-      double cos_a_max = sqrt(1-s.rad*s.rad/(x-s.p).dot(x-s.p));
+      double cos_a_max = _sqrt(1-s.rad*s.rad/(x-s.p).dot(x-s.p));
       double eps1 = erand48(Xi), eps2 = erand48(Xi);
       double cos_a = 1-eps1+eps1*cos_a_max;
-      double sin_a = sqrt(1-cos_a*cos_a);
+      double sin_a = _sqrt(1-cos_a*cos_a);
       double phi = 2*M_PI*eps2;
-      Vec l = su*cos(phi)*sin_a + sv*sin(phi)*sin_a + sw*cos_a;
+      Vec l = su*_cos(phi)*sin_a + sv*_sin(phi)*sin_a + sw*cos_a;
       l.norm();
       if (intersect(Ray(x,l), t, id) && id==i){  // shadow ray
         double omega = 2*M_PI*(1-cos_a_max);
@@ -168,7 +169,7 @@ Vec radiance_expl(struct Task *me, const Ray &r, int depth, unsigned short *Xi,i
   double nc=1, nt=1.5, nnt=into?nc/nt:nt/nc, ddn=r.d.dot(nl), cos2t;
   if ((cos2t=1-nnt*nnt*(1-ddn*ddn))<0)    // Total internal reflection
     return obj.e + f.mult(radiance_expl(me, reflRay,depth,Xi));
-  Vec tdir = (r.d*nnt - n*((into?1:-1)*(ddn*nnt+sqrt(cos2t)))).norm();
+  Vec tdir = (r.d*nnt - n*((into?1:-1)*(ddn*nnt+_sqrt(cos2t)))).norm();
   double a=nt-nc, b=nt+nc, R0=a*a/(b*b), c = 1-(into?-ddn:tdir.dot(n));
   double Re=R0+(1-R0)*c*c*c*c*c,Tr=1-Re,P=.25+.5*Re,RP=Re/P,TP=Tr/(1-P);
   return obj.e + f.mult(depth>2 ? (erand48(Xi)<P ?   // Russian roulette
@@ -189,31 +190,11 @@ Vec radiance(struct Task *me, const Ray &r, int depth, unsigned short *Xi)
     Vec x=r.o+r.d*t, n=(x-obj.p).norm(), nl=n.dot(r.d)<0?n:n*-1, f=obj.c; 
     
     depth++;
-#if 0
-    // Since we do not have automaticly expanding stack, check if there is still
-    // room for further recurencies
-    {
-        ULONG *sp = (ULONG *)AROS_GET_SP;
-        SIPTR diff = 0;
-#if AROS_STACK_GROWS_DOWNWARDS
-        diff = (SIPTR)sp - (SIPTR)me->tc_SPLower;
-#else
-        diff = (SIPTR)me->tc_SPUpper - (SIPTR)sp;
-#endif
-        if (diff < AROS_STACKSIZE / 2)
-        {
-            bug("[SMP-SmallPT-Task] Stack nearly exhausted after %d iterations (%dkB left of %dkB total), breaking recurrence\n", depth, (diff + 512) / 1024,
-                ((IPTR)me->tc_SPUpper - (IPTR)me->tc_SPLower + 512) / 1024);
-            return obj.e;
-        }
-    }
-    #endif
-#if 0
+
     // Above maximal_ray_depth break recursive loop unconditionally
     if (depth > maximal_ray_depth)
         return obj.e;
     else
-#endif
     if (depth>5) // From depth of 5 start Russian roulette
     {
         double p = f.x>f.y && f.x>f.z ? f.x : f.y>f.z ? f.y : f.z; // max refl 
@@ -223,9 +204,9 @@ Vec radiance(struct Task *me, const Ray &r, int depth, unsigned short *Xi)
         else return obj.e; //R.R. 
     }
     if (obj.refl == DIFF){                  // Ideal DIFFUSE reflection 
-        double r1=2*M_PI*erand48(Xi), r2=erand48(Xi), r2s=sqrt(r2); 
+        double r1=2*M_PI*erand48(Xi), r2=erand48(Xi), r2s=_sqrt(r2); 
         Vec w=nl, u=((fabs(w.x)>.1?Vec(0,1):Vec(1))%w).norm(), v=w%u; 
-        Vec d = (u*cos(r1)*r2s + v*sin(r1)*r2s + w*sqrt(1-r2)).norm(); 
+        Vec d = (u*_cos(r1)*r2s + v*_sin(r1)*r2s + w*_sqrt(1-r2)).norm(); 
         return obj.e + f.mult(radiance(me, Ray(x,d),depth,Xi)); 
     } else if (obj.refl == SPEC)            // Ideal SPECULAR reflection 
         return obj.e + f.mult(radiance(me, Ray(x,r.d-n*2*n.dot(r.d)),depth,Xi)); 
@@ -234,7 +215,7 @@ Vec radiance(struct Task *me, const Ray &r, int depth, unsigned short *Xi)
     double nc=1, nt=1.5, nnt=into?nc/nt:nt/nc, ddn=r.d.dot(nl), cos2t; 
     if ((cos2t=1-nnt*nnt*(1-ddn*ddn))<0)    // Total internal reflection 
         return obj.e + f.mult(radiance(me, reflRay,depth,Xi)); 
-    Vec tdir = (r.d*nnt - n*((into?1:-1)*(ddn*nnt+sqrt(cos2t)))).norm(); 
+    Vec tdir = (r.d*nnt - n*((into?1:-1)*(ddn*nnt+_sqrt(cos2t)))).norm(); 
     double a=nt-nc, b=nt+nc, R0=a*a/(b*b), c = 1-(into?-ddn:tdir.dot(n)); 
     double Re=R0+(1-R0)*c*c*c*c*c,Tr=1-Re,P=.25+.5*Re,RP=Re/P,TP=Tr/(1-P); 
     return obj.e + f.mult(depth>2 ? (erand48(Xi)<P ?   // Russian roulette 
@@ -242,7 +223,7 @@ Vec radiance(struct Task *me, const Ray &r, int depth, unsigned short *Xi)
         radiance(me, reflRay,depth,Xi)*Re+radiance(me, Ray(x,tdir),depth,Xi)*Tr); 
 }
 
-static inline struct MyMessage *AllocMsg(struct MinList *msgPool)
+static inline struct MyMessage *AllocMsg(struct List *msgPool)
 {
     struct MyMessage *msg = (struct MyMessage *)RemHead((struct List*)msgPool);
 
@@ -258,7 +239,7 @@ static inline struct MyMessage *AllocMsg(struct MinList *msgPool)
     return msg;
 }
 
-static inline void FreeMsg(struct MinList *msgPool, struct MyMessage *msg)
+static inline void FreeMsg(struct List *msgPool, struct MyMessage *msg)
 {
     AddHead((struct List *)msgPool, &msg->mm_Message.mn_Node);
 }
@@ -311,7 +292,7 @@ extern "C" void RenderTile(struct ExecBase *SysBase, struct MsgPort *masterPort,
     struct MyMessage *m;
     struct MsgPort *port = CreateMsgPort();
     struct MsgPort *syncPort = CreateMsgPort();
-    struct MinList msgPool;
+    struct List msgPool;
     struct Task *me = FindTask(NULL);
 
     c = (Vec *)AllocMem(sizeof(Vec) * TILE_SIZE * TILE_SIZE, MEMF_ANY | MEMF_CLEAR);
@@ -412,8 +393,8 @@ extern "C" void RenderTile(struct ExecBase *SysBase, struct MsgPort *masterPort,
                                         {        // 2x2 subpixel cols 
                                             for (int s=0; s<samps; s++)
                                             { 
-                                                double r1=2*erand48(Xi), dx=r1<1 ? sqrt(r1)-1: 1-sqrt(2-r1); 
-                                                double r2=2*erand48(Xi), dy=r2<1 ? sqrt(r2)-1: 1-sqrt(2-r2); 
+                                                double r1=2*erand48(Xi), dx=r1<1 ? _sqrt(r1)-1: 1-_sqrt(2-r1); 
+                                                double r2=2*erand48(Xi), dy=r2<1 ? _sqrt(r2)-1: 1-_sqrt(2-r2); 
                                                 Vec d = cx*( ( (sx+.5 + dx)/2 + x)/w - .5) + 
                                                         cy*( ( (sy+.5 + dy)/2 + y)/h - .5) + cam.d; 
                                                 if (explicit_mode)
