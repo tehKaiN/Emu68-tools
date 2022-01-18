@@ -10,6 +10,7 @@
 
 #include <clib/exec_protos.h>
 #include <clib/alib_protos.h>
+#include <clib/dos_protos.h>
 
 #include "renderer.h"
 #include "support.h"
@@ -54,12 +55,10 @@ void Renderer(struct ExecBase *ExecBase, struct MsgPort *ParentMailbox)
     int tasks_in = 0;
     int tasks_out = 0;
     int tasks_work = 0;
-    ULONG workerStack = 262144 + maximal_ray_depth * 1000;
+    ULONG workerStack = 0x100000 + maximal_ray_depth * 2048;
     int expl_mode = 0;
 
-#if 0
-    D(bug("[SMP-Smallpt-Renderer] Renderer started, ParentMailBox = %p\n", ParentMailbox));
-#endif
+    //Printf("[SMP-Smallpt-Renderer] Renderer started, ParentMailBox = %p\n", ParentMailbox);
 
     port = CreateMsgPort();
     

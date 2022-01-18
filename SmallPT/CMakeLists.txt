@@ -13,4 +13,5 @@ add_executable(SmallPT
     src/smallpt.cc
 )
 
-target_link_libraries(SmallPT amiga)
+set_target_properties(SmallPT PROPERTIES LINKER_LANGUAGE C)
+target_link_libraries(SmallPT amiga m)

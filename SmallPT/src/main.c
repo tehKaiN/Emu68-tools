@@ -110,7 +110,12 @@ int main()
 
     ULONG coreCount = 1;
 
-while(1);
+    P96Base = OpenLibrary("Picasso96API.library", 0);
+
+    if (!P96Base) {
+        Printf("Failed to open Picasso96API.library!\n"); 
+        return -1;
+    }
 
     if (timerPort)
     {
@@ -171,6 +176,8 @@ while(1);
         explicit_mode = args[ARG_EXPLICIT];
     }
 
+    coreCount = max_cpus;
+
     displayWin = createMainWindow(req_width, req_height);
 
     if (displayWin)
@@ -193,10 +200,8 @@ while(1);
         width = (displayWin->Width - displayWin->BorderLeft - displayWin->BorderRight);
         height = (displayWin->Height - displayWin->BorderTop - displayWin->BorderBottom);
 
-#if 0
-        Printf("[SMP-Smallpt] %s: Created window with inner size of %dx%d\n", __func__, width, height);)
-        Printf("[SMP-Smallpt] %s: Tiles amount %dx%d\n", __func__, width / 32, height / 32);)
-#endif
+        Printf("[SMP-Smallpt] Created window with inner size of %ldx%ld\n", width, height);
+        Printf("[SMP-Smallpt] Tiles amount %ldx%ld\n", width / 32, height / 32);
 
         outputBMap = AllocBitMap(
                         width,
@@ -213,7 +218,7 @@ while(1);
         struct RenderInfo ri;
         ri.Memory = workBuffer;
         ri.BytesPerRow = width * sizeof(ULONG);
-        ri.RGBFormat = RGBFB_A8R8G8B8;
+        ri.RGBFormat = RGBFB_R8G8B8A8;
 
         p96WritePixelArray(&ri, 0, 0, outBMRastPort, 0, 0, width, height);
 
@@ -221,20 +226,19 @@ while(1);
             displayWin->RPort, displayWin->BorderLeft, displayWin->BorderTop,
             width, height, 0xC0); 
 
-#if 0
-        D(bug("[SMP-Smallpt] %s: Creating renderer task\n", __func__);)
-#endif
+        Printf("[SMP-Smallpt] Creating renderer task\n");
 
         renderer = NewCreateTask(TASKTAG_NAME,      (Tag)"SMP-Smallpt Master",
                                 TASKTAG_PRI,        0,
                                 TASKTAG_PC,         (Tag)Renderer,
                                 TASKTAG_ARG1,       (Tag)*(struct ExecBase **)4,
                                 TASKTAG_ARG2,       (Tag)mainPort,
+                                TASKTAG_STACKSIZE,  65536,
                                 TAG_DONE);
         (void)renderer;
-#if 0
-        D(bug("[SMP-Smallpt] %s: waiting for welcome message form renderer\n", __func__);)
-#endif
+
+        Printf("[SMP-Smallpt] waiting for welcome message form renderer\n");
+
         WaitPort(mainPort);
         msg = GetMsg(mainPort);
         rendererPort = msg->mn_ReplyPort;
@@ -246,13 +250,11 @@ while(1);
         cmd.mm_Body.Startup.ChunkyBM = workBuffer;
         cmd.mm_Body.Startup.Width = width;
         cmd.mm_Body.Startup.Height = height;
-        cmd.mm_Body.Startup.coreCount = coreCount;
+        cmd.mm_Body.Startup.coreCount = max_cpus;
         cmd.mm_Body.Startup.numberOfSamples = max_iter;
         cmd.mm_Body.Startup.explicitMode = explicit_mode;
 
-#if 0
-        D(bug("[SMP-Smallpt] %s: renderer alive. sending startup message\n", __func__);)
-#endif
+        Printf("[SMP-Smallpt] renderer alive. sending startup message\n");
 
         PutMsg(rendererPort, &cmd.mm_Message);
         WaitPort(mainPort);
@@ -314,7 +316,7 @@ while(1);
                                             outBMRastPort, 
                                             msg->mm_Body.RedrawTile.TileX * TILE_SIZE, 
                                             msg->mm_Body.RedrawTile.TileY * TILE_SIZE,
-                                           width, height);
+                                           TILE_SIZE, TILE_SIZE);
 
                                 BltBitMapRastPort (outputBMap, 
                                             msg->mm_Body.RedrawTile.TileX * TILE_SIZE, 
