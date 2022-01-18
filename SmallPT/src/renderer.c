@@ -3,10 +3,13 @@
     $Id$
 */
 
-#include <proto/exec.h>
+//#include <proto/exec.h>
 
 #include <exec/tasks.h>
 #include <exec/ports.h>
+
+#include <clib/exec_protos.h>
+#include <clib/alib_protos.h>
 
 #include "renderer.h"
 #include "support.h"
@@ -22,7 +25,7 @@ struct Worker {
 
 struct MyMessage *AllocMyMessage(struct MinList *msgPool)
 {
-    struct MyMessage *msg = (struct MyMessage *)REMHEAD(msgPool);
+    struct MyMessage *msg = (struct MyMessage *)RemHead((struct List *)msgPool);
     if (msg)
     {
         msg->mm_Message.mn_Length = sizeof(struct MyMessage);
@@ -33,7 +36,7 @@ struct MyMessage *AllocMyMessage(struct MinList *msgPool)
 
 void FreeMyMessage(struct MinList *msgPool, struct MyMessage *msg)
 {
-    ADDHEAD(msgPool, &msg->mm_Message.mn_Node);
+    AddHead((struct List *)msgPool, &msg->mm_Message.mn_Node);
 }
 
 void Renderer(struct ExecBase *ExecBase, struct MsgPort *ParentMailbox)
@@ -70,9 +73,9 @@ void Renderer(struct ExecBase *ExecBase, struct MsgPort *ParentMailbox)
         struct tileWork *workPackages;
         struct Worker *workers;
 
-        NEWLIST(&workList);
-        NEWLIST(&doneList);
-        NEWLIST(&msgPool);
+        NewList((struct List *)&workList);
+        NewList((struct List *)&doneList);
+        NewList((struct List *)&msgPool);
 
         /* Prepare initial message and wait for startup msg */
         startup.mn_Length = sizeof(startup);
@@ -133,7 +136,7 @@ void Renderer(struct ExecBase *ExecBase, struct MsgPort *ParentMailbox)
         {
             workPackages[i].x = i % (width / TILE_SIZE);
             workPackages[i].y = i / (width / TILE_SIZE);
-            AddHead(&workList, &workPackages[i].node);
+            AddHead((struct List *)&workList, (struct Node *)&workPackages[i].node);
         }
 
         messages = AllocMem(sizeof(struct MyMessage) * numberOfCores * 10, MEMF_PUBLIC | MEMF_CLEAR);
@@ -154,7 +157,7 @@ void Renderer(struct ExecBase *ExecBase, struct MsgPort *ParentMailbox)
             workers[i].task = NewCreateTask(TASKTAG_NAME,   (Tag)workers[i].name,
                                     TASKTAG_PRI,            0,
                                     TASKTAG_PC,             (Tag)RenderTile,
-                                    TASKTAG_ARG1,           (Tag)SysBase,
+                                    TASKTAG_ARG1,           (Tag)ExecBase,
                                     TASKTAG_ARG2,           (Tag)port,
                                     TASKTAG_ARG3,           (Tag)&workers[i].port,
                                     TASKTAG_STACKSIZE,      workerStack,
@@ -221,7 +224,7 @@ void Renderer(struct ExecBase *ExecBase, struct MsgPort *ParentMailbox)
 
                             if (m)
                             {
-                                struct tileWork *work = (struct tileWork *)RemHead(&workList);
+                                struct tileWork *work = (struct tileWork *)RemHead((struct List *)&workList);
                                 tasks_in--;
                                 tasks_work++;
 
@@ -243,7 +246,7 @@ void Renderer(struct ExecBase *ExecBase, struct MsgPort *ParentMailbox)
                     {
                         struct tileWork *work = msg->mm_Body.RenderTile.tile;
                         ReplyMsg(&msg->mm_Message);
-                        AddHead(&doneList, work);
+                        AddHead((struct List *)&doneList, (struct Node *)work);
                         tasks_out++;
                         tasks_work--;
                     }

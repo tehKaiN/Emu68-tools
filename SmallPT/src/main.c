@@ -3,19 +3,19 @@
     $Id$
 */
 
-#include <proto/exec.h>
-#include <proto/dos.h>
-#include <proto/dos.h>
-#include <proto/graphics.h>
-#include <proto/cybergraphics.h>
-#include <proto/intuition.h>
-#include <proto/timer.h>
-
 #include <graphics/gfx.h>
 #include <exec/tasks.h>
 #include <exec/ports.h>
 #include <exec/lists.h>
-#include <cybergraphx/cybergraphics.h>
+#include <libraries/Picasso96.h>
+
+#include <proto/Picasso96.h>
+
+#include <clib/exec_protos.h>
+#include <clib/dos_protos.h>
+#include <clib/intuition_protos.h>
+#include <clib/graphics_protos.h>
+#include <clib/timer_protos.h>
 
 #include "renderer.h"
 #include "support.h"
@@ -86,6 +86,9 @@ struct Window * createMainWindow(int req_width, int req_height)
 #define ARG_RAYDEPTH 4
 #define ARG_EXPLICIT 5
 
+struct TimerBase *TimerBase = NULL;
+struct Library * P96Base = NULL;
+
 int main()
 {
     APTR ProcessorBase;
@@ -98,7 +101,7 @@ int main()
     int explicit_mode = 0;
     struct MsgPort *timerPort = CreateMsgPort();
     struct timerequest *tr = CreateIORequest(timerPort, sizeof(struct timerequest));
-    struct TimerBase *TimerBase = NULL;
+
     struct timeval start_time;
     struct timeval now;
 
@@ -106,6 +109,8 @@ int main()
     struct BitMap *outputBMap = NULL;
 
     ULONG coreCount = 1;
+
+while(1);
 
     if (timerPort)
     {
@@ -167,6 +172,7 @@ int main()
     }
 
     displayWin = createMainWindow(req_width, req_height);
+
     if (displayWin)
     {
         int width, height;
@@ -202,14 +208,14 @@ int main()
         InitRastPort(outBMRastPort);
         outBMRastPort->BitMap = outputBMap;
 
-        workBuffer = AllocMem(width * height * sizeof(ULONG), MEMF_ANY|MEMF_CLEAR);
+        workBuffer = AllocMem(width * height * sizeof(ULONG), MEMF_ANY | MEMF_CLEAR);
 
-        WritePixelArray(workBuffer,
-                        0, 0, width * sizeof(ULONG),
-                        outBMRastPort,
-                        0, 0,
-                        width, height,
-                        RECTFMT_ARGB);
+        struct RenderInfo ri;
+        ri.Memory = workBuffer;
+        ri.BytesPerRow = width * sizeof(ULONG);
+        ri.RGBFormat = RGBFB_A8R8G8B8;
+
+        p96WritePixelArray(&ri, 0, 0, outBMRastPort, 0, 0, width, height);
 
         BltBitMapRastPort (outputBMap, 0, 0,
             displayWin->RPort, displayWin->BorderLeft, displayWin->BorderTop,
@@ -222,7 +228,7 @@ int main()
         renderer = NewCreateTask(TASKTAG_NAME,      (Tag)"SMP-Smallpt Master",
                                 TASKTAG_PRI,        0,
                                 TASKTAG_PC,         (Tag)Renderer,
-                                TASKTAG_ARG1,       (Tag)SysBase,
+                                TASKTAG_ARG1,       (Tag)*(struct ExecBase **)4,
                                 TASKTAG_ARG2,       (Tag)mainPort,
                                 TAG_DONE);
         (void)renderer;
@@ -263,12 +269,7 @@ int main()
             // CTRL_D is redraw signal
             if (signals & SIGBREAKF_CTRL_D)
             {
-                WritePixelArray(workBuffer,
-                                            0, 0, width * sizeof(ULONG),
-                                            outBMRastPort,
-                                            0, 0,
-                                            width, height,
-                                            RECTFMT_ARGB);
+                p96WritePixelArray(&ri, 0, 0, outBMRastPort, 0, 0, width, height);
 
                 BltBitMapRastPort (outputBMap, 0, 0,
                     displayWin->RPort, displayWin->BorderLeft, displayWin->BorderTop,
@@ -307,13 +308,13 @@ int main()
                         switch (msg->mm_Type)
                         {
                             case MSG_REDRAWTILE:
-                                WritePixelArray(workBuffer,
+                                p96WritePixelArray(&ri, 
                                             msg->mm_Body.RedrawTile.TileX * TILE_SIZE, 
-                                            msg->mm_Body.RedrawTile.TileY * TILE_SIZE, width * sizeof(ULONG),
-                                            outBMRastPort,
-                                            msg->mm_Body.RedrawTile.TileX * TILE_SIZE,
                                             msg->mm_Body.RedrawTile.TileY * TILE_SIZE,
-                                            TILE_SIZE, TILE_SIZE, RECTFMT_ARGB);
+                                            outBMRastPort, 
+                                            msg->mm_Body.RedrawTile.TileX * TILE_SIZE, 
+                                            msg->mm_Body.RedrawTile.TileY * TILE_SIZE,
+                                           width, height);
 
                                 BltBitMapRastPort (outputBMap, 
                                             msg->mm_Body.RedrawTile.TileX * TILE_SIZE, 

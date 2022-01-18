@@ -1,6 +1,7 @@
 #ifndef _RENDERER_H
 #define _RENDERER_H
 
+#include <exec/execbase.h>
 #include <exec/ports.h>
 #include <exec/tasks.h>
 

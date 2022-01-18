@@ -1,10 +1,11 @@
-#define DEBUG 1
+
 #include <math.h>   // smallpt, a Path Tracer by Kevin Beason, 2008 
 #include <stdlib.h>
 #include <exec/types.h>
-#include <aros/debug.h>
+#include <dos/dos.h>
 #include <exec/tasks.h>
-#include <proto/exec.h>
+#include <clib/exec_protos.h>
+#include <clib/alib_protos.h>
 
 #include "renderer.h"
 
@@ -105,7 +106,7 @@ Vec radiance_expl(struct Task *me, const Ray &r, int depth, unsigned short *Xi,i
   Vec x=r.o+r.d*t, n=(x-obj.p).norm(), nl=n.dot(r.d)<0?n:n*-1, f=obj.c;
   double p = f.x>f.y && f.x>f.z ? f.x : f.y>f.z ? f.y : f.z; // max refl
   depth++;
-#if 1
+#if 0
   // Since we do not have automaticly expanding stack, check if there is still
   // room for further recurencies
   {
@@ -188,7 +189,7 @@ Vec radiance(struct Task *me, const Ray &r, int depth, unsigned short *Xi)
     Vec x=r.o+r.d*t, n=(x-obj.p).norm(), nl=n.dot(r.d)<0?n:n*-1, f=obj.c; 
     
     depth++;
-#if 1
+#if 0
     // Since we do not have automaticly expanding stack, check if there is still
     // room for further recurencies
     {
@@ -243,25 +244,28 @@ Vec radiance(struct Task *me, const Ray &r, int depth, unsigned short *Xi)
 
 static inline struct MyMessage *AllocMsg(struct MinList *msgPool)
 {
-    struct MyMessage *msg = (struct MyMessage *)REMHEAD(msgPool);
+    struct MyMessage *msg = (struct MyMessage *)RemHead((struct List*)msgPool);
 
     if (msg)
     {
         msg->mm_Message.mn_Length = sizeof(struct MyMessage);
     }
+#if 0
     else
         bug("!!! smallpt.cc - run out of free messages!\n");
-    
+#endif
+
     return msg;
 }
 
 static inline void FreeMsg(struct MinList *msgPool, struct MyMessage *msg)
 {
-    ADDHEAD(msgPool, &msg->mm_Message.mn_Node);
+    AddHead((struct List *)msgPool, &msg->mm_Message.mn_Node);
 }
 
 void __prepare()
 {
+#if 0
     ULONG *ptr = NULL;
     ULONG *sp = (ULONG*)AROS_GET_SP;
 
@@ -274,10 +278,12 @@ void __prepare()
     while ((IPTR)ptr > (IPTR)sp+SP_OFFSET)
         *--ptr = 0xdeadbeef;
 #endif
+#endif
 }
 
 void __test()
 {
+#if 0
     IPTR diff = 0;
 #if AROS_STACK_GROWS_DOWNWARDS
     ULONG *ptr = (ULONG *)FindTask(NULL)->tc_SPLower;
@@ -295,6 +301,7 @@ void __test()
     diff = (IPTR)ptr - bottom;
 #endif
     bug("--> USED STACK: %d\n", diff);
+#endif
 }
 
 extern "C" void RenderTile(struct ExecBase *SysBase, struct MsgPort *masterPort, struct MsgPort **myPort)
@@ -315,10 +322,12 @@ extern "C" void RenderTile(struct ExecBase *SysBase, struct MsgPort *masterPort,
     syncPort->mp_SigBit = -1;
     syncPort->mp_Flags = PA_IGNORE;
 
-    NEWLIST(&msgPool);
+    NewList((struct List *)&msgPool);
 
+#if 0
     D(bug("[SMP-SmallPT-Task] hello, msgport=%p\n", port));
-    
+#endif
+
     msg = (struct MyMessage *)AllocMem(sizeof(struct MyMessage) * 20, MEMF_PUBLIC | MEMF_CLEAR);
     for (int i=0; i < 20; i++)
         FreeMsg(&msgPool, &msg[i]);
@@ -337,9 +346,9 @@ extern "C" void RenderTile(struct ExecBase *SysBase, struct MsgPort *masterPort,
             m->mm_Type = MSG_HUNGRY;
             PutMsg(masterPort, &m->mm_Message);
         }
-        
+#if 0
         D(bug("[SMP-SmallPT-Task] Just told renderer I'm hungry\n"));
-
+#endif
         do {
             signals = Wait(SIGBREAKF_CTRL_C | (1 << port->mp_SigBit));
 
@@ -492,7 +501,9 @@ extern "C" void RenderTile(struct ExecBase *SysBase, struct MsgPort *masterPort,
 
         } while(doWork);
     }
+#if 0
     D(bug("[SMP-SmallPT-Task] cleaning up stuff\n"));
+#endif
     FreeMem(msg, sizeof(struct MyMessage) * 20);
     DeleteMsgPort(port);
     DeleteMsgPort(syncPort);

@@ -9,4 +9,4 @@ add_subdirectory(sdcard.device)
 add_subdirectory(emu68-vc4.card)
 add_subdirectory(68040.library)
 add_subdirectory(EmuControl)
-
+add_subdirectory(SmallPT)

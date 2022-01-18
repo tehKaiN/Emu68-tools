@@ -1,7 +1,10 @@
-#include <proto/exec.h>
-#include <proto/utility.h>
 #include "support.h"
 #include <stdarg.h>
+#include <stdint.h>
+
+#include <clib/exec_protos.h>
+#include <clib/utility_protos.h>
+#include <clib/alib_protos.h>
 
 int _strlen(CONST_STRPTR str)
 {
@@ -86,7 +89,6 @@ struct Task * NewCreateTaskTags(struct TagItem *tags)
 
     return task;
 }
-
 
 static void int_itoa(char *buf, char base, uintptr_t value, char zero_pad, int precision, int size_mod, char big, int alternate_form, int neg, char sign)
 {
@@ -273,7 +275,7 @@ void vkprintf_pc(putc_func putc_f, void *putc_data, const char * restrict format
                     value = va_arg(args, uintptr_t);
                     int_itoa(tmpbuf, 16, value, 1, 2*sizeof(uintptr_t), 2*sizeof(uintptr_t), big, 1, 0, sign);
                     str = tmpbuf;
-                    size_mod -= int_strlen(str);
+                    size_mod -= _strlen(str) - 1;
                     while (*str) {
                         putc_f(putc_data, *str++);
                     }
@@ -302,7 +304,7 @@ void vkprintf_pc(putc_func putc_f, void *putc_data, const char * restrict format
                     }
                     int_itoa(tmpbuf, 16, value, zero_pad, precision, size_mod, big, alternate_form, 0, sign);
                     str = tmpbuf;
-                    size_mod -= int_strlen(str);
+                    size_mod -= _strlen(str) - 1;
                     if (!leftalign)
                         while(size_mod-- > 0)
                             putc_f(putc_data, ' ');
@@ -334,7 +336,7 @@ void vkprintf_pc(putc_func putc_f, void *putc_data, const char * restrict format
                     }
                     int_itoa(tmpbuf, 10, value, zero_pad, precision, size_mod, 0, alternate_form, 0, sign);
                     str = tmpbuf;
-                    size_mod -= int_strlen(str);
+                    size_mod -= _strlen(str) - 1;
                     if (!leftalign)
                         while(size_mod-- > 0)
                             putc_f(putc_data, ' ');
@@ -370,7 +372,7 @@ void vkprintf_pc(putc_func putc_f, void *putc_data, const char * restrict format
                     else
                         int_itoa(tmpbuf, 10, ivalue, zero_pad, precision, size_mod, 0, alternate_form, 0, sign);
                     str = tmpbuf;
-                    size_mod -= int_strlen(str);
+                    size_mod -= _strlen(str) - 1;
                     if (!leftalign)
                         while(size_mod-- > 0)
                             putc_f(putc_data, ' ');
@@ -402,7 +404,7 @@ void vkprintf_pc(putc_func putc_f, void *putc_data, const char * restrict format
                     }
                     int_itoa(tmpbuf, 8, value, zero_pad, precision, size_mod, 0, alternate_form, 0, sign);
                     str = tmpbuf;
-                    size_mod -= int_strlen(str);
+                    size_mod -= _strlen(str) - 1;
                     if (!leftalign)
                         while(size_mod-- > 0)
                             putc_f(putc_data, ' ');
