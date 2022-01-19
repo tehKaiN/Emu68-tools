@@ -152,7 +152,7 @@ int main()
 
     if (maxWork)
         workMaster.smpm_MaxWork = maxWork;
-    if (oversample && buddha)
+    if (oversample)
         workMaster.smpm_Oversample = oversample;
 
     InitSemaphore(&workMaster.smpm_Lock);
