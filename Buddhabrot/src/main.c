@@ -282,8 +282,10 @@ int main()
 
         workMaster.smpm_WorkBuffer = AllocMem(workMaster.smpm_Width * workMaster.smpm_Height * sizeof(ULONG), MEMF_ANY|MEMF_CLEAR);
 
+        ULONG *rgba = AllocMem(workMaster.smpm_Width * workMaster.smpm_Height * sizeof(ULONG), MEMF_ANY|MEMF_CLEAR);
+
         struct RenderInfo ri;
-        ri.Memory = workMaster.smpm_WorkBuffer;
+        ri.Memory = rgba;
         ri.BytesPerRow = workMaster.smpm_Width * sizeof(ULONG);
         ri.RGBFormat = RGBFB_R8G8B8A8;
 
@@ -333,6 +335,23 @@ int main()
                 {
                     if (!IsListEmpty(&coreWorker->smpw_MsgPort->mp_MsgList))
                         complete = FALSE;
+                }
+
+                for (ULONG i = 0; i < workMaster.smpm_Width * workMaster.smpm_Height; i++)
+                {
+                    ULONG rgb = workMaster.smpm_WorkBuffer[i];
+                    ULONG r=96*rgb,g=128*rgb,b=256*rgb;
+
+                    b = (b + 255) / 512;
+                    r = (r + 255) / 512;
+                    g = (g + 255) / 512;
+
+                    if (b > 255) b = 255;
+                    if (r > 255) r = 255;
+                    if (g > 255) g = 255;
+
+                    ULONG c = 0xff | (b << 8) | (g << 16) | (r << 24);
+                    rgba[i] = c;
                 }
 
                 p96WritePixelArray(&ri, 0, 0, 
@@ -396,6 +415,7 @@ int main()
             }
         }
         FreeMem(workMaster.smpm_WorkBuffer, workMaster.smpm_Width * workMaster.smpm_Height * sizeof(ULONG));
+        FreeMem(rgba, workMaster.smpm_Width * workMaster.smpm_Height * sizeof(ULONG));
         CloseWindow(displayWin);
         outBMRastPort->BitMap = NULL;
         FreeMem(outBMRastPort, sizeof(struct RastPort));

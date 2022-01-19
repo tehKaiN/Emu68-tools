@@ -114,12 +114,12 @@ void processWork(struct WorkersWork *workload, ULONG *workBuffer, ULONG workWidt
                     if (pos > 0 && pos < (workWidth * workHeight))
                     {
 
-                        val = ((workBuffer[pos] >> 24) & 0xff);
+                        val = workBuffer[pos];
                         
-                        if (val != 0xff)
+                        if (val < 0xfff)
                             val++;
 
-                        workBuffer[pos] = 0x000000ff | (((val << 16) | (val << 8) | val ) << 8);
+                        workBuffer[pos] = val;
 
                     }
                 }
@@ -130,14 +130,14 @@ void processWork(struct WorkersWork *workload, ULONG *workBuffer, ULONG workWidt
         {
             (void)diff_sr;
 
-            val = ((workBuffer[current / workload->workOver2] >> 8) & 0xff);
+            val = workBuffer[current / workload->workOver2];
 
             val+= 10*trajectoryLength; //(255 * trajectoryLength) / workload->workMax;
             
-            if (val > 255)
-                val = 255;
+            if (val > 0xfff)
+                val = 0xfff;
 
-            workBuffer[current / workload->workOver2] = (((val << 16) | (val << 8) | val) << 8) | 0xff;
+            workBuffer[current / workload->workOver2] = val;
         }
     }
 }
