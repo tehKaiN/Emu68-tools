@@ -34,6 +34,11 @@ static inline double _sqrt(double x)
     return res;
 }
 
+static inline void _sincos(double x, double *sin, double *cos)
+{
+    asm volatile("fsincos.x %2, %1, %0":"=f"(*sin), "=f"(*cos):"f"(x));
+}
+
 struct Vec {        // Usage: time ./smallpt 5000 && xv image.ppm
     double x;
     double y;
@@ -139,7 +144,9 @@ Vec radiance_expl(struct Task *me, const Ray &r, int depth, unsigned short *Xi,i
   if (obj.refl == DIFF){                  // Ideal DIFFUSE reflection
     double r1=2*M_PI*erand48(Xi), r2=erand48(Xi), r2s=_sqrt(r2);
     Vec w=nl, u=((fabs(w.x)>.1?Vec(0,1):Vec(1))%w).norm(), v=w%u;
-    Vec d = (u*_cos(r1)*r2s + v*_sin(r1)*r2s + w*_sqrt(1-r2)).norm();
+    double si, co;
+    _sincos(r1, &si, &co);
+    Vec d = (u*co*r2s + v*si*r2s + w*_sqrt(1-r2)).norm();
 
     // Loop over any lights
     Vec e;
@@ -153,7 +160,9 @@ Vec radiance_expl(struct Task *me, const Ray &r, int depth, unsigned short *Xi,i
       double cos_a = 1-eps1+eps1*cos_a_max;
       double sin_a = _sqrt(1-cos_a*cos_a);
       double phi = 2*M_PI*eps2;
-      Vec l = su*_cos(phi)*sin_a + sv*_sin(phi)*sin_a + sw*cos_a;
+      double si, co;
+      _sincos(phi, &si, &co);
+      Vec l = su*co*sin_a + sv*si*sin_a + sw*cos_a;
       l.norm();
       if (intersect(Ray(x,l), t, id) && id==i){  // shadow ray
         double omega = 2*M_PI*(1-cos_a_max);
@@ -206,7 +215,9 @@ Vec radiance(struct Task *me, const Ray &r, int depth, unsigned short *Xi)
     if (obj.refl == DIFF){                  // Ideal DIFFUSE reflection 
         double r1=2*M_PI*erand48(Xi), r2=erand48(Xi), r2s=_sqrt(r2); 
         Vec w=nl, u=((fabs(w.x)>.1?Vec(0,1):Vec(1))%w).norm(), v=w%u; 
-        Vec d = (u*_cos(r1)*r2s + v*_sin(r1)*r2s + w*_sqrt(1-r2)).norm(); 
+        double si, co;
+        _sincos(r1, &si, &co);
+        Vec d = (u*co*r2s + v*si*r2s + w*_sqrt(1-r2)).norm(); 
         return obj.e + f.mult(radiance(me, Ray(x,d),depth,Xi)); 
     } else if (obj.refl == SPEC)            // Ideal SPECULAR reflection 
         return obj.e + f.mult(radiance(me, Ray(x,r.d-n*2*n.dot(r.d)),depth,Xi)); 
@@ -416,8 +427,7 @@ extern "C" void RenderTile(struct ExecBase *SysBase, struct MsgPort *masterPort,
                                     }
                                     start_ptr += w;
                                 }
-
-    #if 1
+                                
                                 if (redraw)
                                 {
                                     m = AllocMsg(&msgPool);
@@ -436,13 +446,7 @@ extern "C" void RenderTile(struct ExecBase *SysBase, struct MsgPort *masterPort,
                                     FreeMsg(&msgPool, m);
                                     redraw = TRUE;
                                 }
-    #else
-                                (void)syncPort;
-                                Signal((struct Task *)guiPort->mp_SigTask, SIGBREAKF_CTRL_D);
-    #endif
                             }
-//__test();
-//                            Signal((struct Task *)guiPort->mp_SigTask, SIGBREAKF_CTRL_D);
 
                             m = AllocMsg(&msgPool);
                             if (m)

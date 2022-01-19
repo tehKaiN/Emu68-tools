@@ -247,6 +247,10 @@ void Renderer(struct ExecBase *ExecBase, struct MsgPort *ParentMailbox)
                         AddHead((struct List *)&doneList, (struct Node *)work);
                         tasks_out++;
                         tasks_work--;
+
+                        if (tasks_in == 0) {
+                            Signal(ParentMailbox->mp_SigTask, SIGBREAKF_CTRL_D);
+                        }
                     }
                     if (deathMessage == NULL)
                     {

@@ -137,8 +137,8 @@ int main()
         if (ptr)
         {
             max_iter = *ptr;
-            if (max_iter < 2)
-                max_iter = 2;
+            if (max_iter < 1)
+                max_iter = 1;
             else if (max_iter > 10000)
                 max_iter = 10000;
         }
@@ -209,13 +209,13 @@ int main()
         width = (displayWin->Width - displayWin->BorderLeft - displayWin->BorderRight);
         height = (displayWin->Height - displayWin->BorderTop - displayWin->BorderBottom);
 
-        Printf("[SMP-Smallpt] Created window with inner size of %ldx%ld\n", width, height);
-        Printf("[SMP-Smallpt] Tiles amount %ldx%ld\n", width / 32, height / 32);
+        Printf("Created window with inner size of %ldx%ld\n", width, height);
+        Printf("Tiles amount %ldx%ld\n", width / 32, height / 32);
         if (explicit_mode)
-            Printf("[SMP-Smallpt] Explicit mode enabled\n");
-        Printf("[SMP-Smallpt] Number of threads: %ld\n", coreCount);
-        Printf("[SMP-Smallpt] Ray depth: %ld\n", maximal_ray_depth);
-        Printf("[SMP-Smallpt] Number of iterations: %ld\n", max_iter);
+            Printf("Explicit mode enabled\n");
+        Printf("Number of threads: %ld\n", coreCount);
+        Printf("Ray depth: %ld\n", maximal_ray_depth);
+        Printf("Number of iterations: %ld\n", max_iter);
 
         outputBMap = AllocBitMap(
                         width,
@@ -240,7 +240,7 @@ int main()
             displayWin->RPort, displayWin->BorderLeft, displayWin->BorderTop,
             width, height, 0xC0); 
 
-        Printf("[SMP-Smallpt] Creating renderer task\n");
+        Printf("Creating renderer task\n");
 
         renderer = NewCreateTask(TASKTAG_NAME,      (Tag)"SMP-Smallpt Master",
                                 TASKTAG_PRI,        3,
@@ -251,7 +251,7 @@ int main()
                                 TAG_DONE);
         (void)renderer;
 
-        Printf("[SMP-Smallpt] waiting for welcome message form renderer\n");
+        Printf("Waiting for welcome message form renderer...\n");
 
         WaitPort(mainPort);
         msg = GetMsg(mainPort);
@@ -268,26 +268,26 @@ int main()
         cmd.mm_Body.Startup.numberOfSamples = max_iter;
         cmd.mm_Body.Startup.explicitMode = explicit_mode;
 
-        Printf("[SMP-Smallpt] renderer alive. sending startup message\n");
+        Printf("... renderer alive. sending startup message\n");
 
         PutMsg(rendererPort, &cmd.mm_Message);
         WaitPort(mainPort);
         GetMsg(mainPort);
 
-        Printf("[SMP-Smallpt] enter main loop\n");
+        Printf("Entering main loop\n");
 
         GetSysTime(&start_time);
 
         while ((!windowClosing) && ((signals = Wait(SIGBREAKF_CTRL_D | (1 << displayWin->UserPort->mp_SigBit) | (1 << mainPort->mp_SigBit))) != 0))
         {
-            // CTRL_D is redraw signal
+            // CTRL_D is show time signal
             if (signals & SIGBREAKF_CTRL_D)
             {
-                p96WritePixelArray(&ri, 0, 0, outBMRastPort, 0, 0, width, height);
+                GetSysTime(&now);
+                SubTime(&now, &start_time);
 
-                BltBitMapRastPort (outputBMap, 0, 0,
-                    displayWin->RPort, displayWin->BorderLeft, displayWin->BorderTop,
-                    width, height, 0xC0); 
+                Printf("Rendering time: %ld:%02ld:%02ld\n",
+                    now.tv_secs / 3600, (now.tv_secs / 60) % 60, now.tv_secs % 60);
             }
             if (signals & (1 << displayWin->UserPort->mp_SigBit))
             {
@@ -347,7 +347,7 @@ int main()
                                 
                                 GetSysTime(&now);
                                 SubTime(&now, &start_time);
-                                _sprintf(tmpbuf, "SMP-Smallpt renderer (%d in work, %d waiting, %d done): %d:%02d:%02d",
+                                _sprintf(tmpbuf, "Rendering (%d in work, %d waiting, %d done): %d:%02d:%02d",
                                     tasksWork, tasksIn, tasksOut,
                                     now.tv_secs / 3600,
                                     (now.tv_secs / 60) % 60,
