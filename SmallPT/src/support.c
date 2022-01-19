@@ -48,7 +48,7 @@ struct Task * NewCreateTaskTags(struct TagItem *tags)
 
     if (entry != NULL)
     {
-        struct Task *task = AllocMem(sizeof(struct Task), MEMF_PUBLIC | MEMF_CLEAR);
+        task = AllocMem(sizeof(struct Task), MEMF_PUBLIC | MEMF_CLEAR);
         struct MemList *ml = AllocMem(sizeof(struct MemList) + 2*sizeof(struct MemEntry), MEMF_PUBLIC | MEMF_CLEAR);
         ULONG *stack = AllocMem(stacksize, MEMF_PUBLIC | MEMF_CLEAR);
         ULONG *sp = (ULONG *)((ULONG)stack + stacksize);
