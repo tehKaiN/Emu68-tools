@@ -15,7 +15,6 @@
 #include "renderer.h"
 #include "support.h"
 
-extern void render_tile(int w, int h, int samps, int tile_x, int tile_y, ULONG *buffer, struct Task *gfx);
 extern void RenderTile(struct ExecBase *SysBase, struct MsgPort *masterPort, struct MsgPort **myPort);
 
 struct Worker {
