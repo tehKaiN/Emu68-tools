@@ -63,6 +63,8 @@ ULONG calculateTrajectory(struct WorkersWork *workload, double r, double i)
     return 0;
 }
 
+double x_0 = 0.0, y_0 = 0, size = 4.0;
+
 void processWork(struct WorkersWork *workload, ULONG *workBuffer, ULONG workWidth, ULONG workHeight, ULONG workStart, ULONG workEnd, BOOL buddha)
 {
     /*
@@ -73,11 +75,11 @@ void processWork(struct WorkersWork *workload, ULONG *workBuffer, ULONG workWidt
     */
     ULONG trajectoryLength;
     ULONG current;
+    
     double x, y;
-    double diff = 4.0 / ((double)(workWidth * workload->workOversamp));
-    //double diff_y = 4.0 / ((double)workload->workOversamp * (double)workHeight);
-    double y_base = 2.0 - (diff / 2.0);
-    double diff_sr = 4.0 / (double)workWidth;
+    double diff = size / ((double)(workWidth * workload->workOversamp));
+    double y_base = size / 2.0 - (diff * 2.0 / size);
+    double diff_sr = size / (double)workWidth;
 
     DWORK(
         bug("[SMP-Test:Worker] %s: Buffer @ 0x%p\n", __func__, workBuffer);
@@ -85,13 +87,13 @@ void processWork(struct WorkersWork *workload, ULONG *workBuffer, ULONG workWidt
         bug("[SMP-Test:Worker] %s: start : %d, end %d\n", __func__, workStart, workEnd);
     )
 
-    for (current = workStart * workload->workOver2; current <= workEnd * workload->workOver2; current++)
+    for (current = workStart * workload->workOver2; current < (workEnd + 1) * workload->workOver2 - 1; current++)
     {
         ULONG val;
 
         /* Locate the point on the complex plane */
-        x = ((double)(current % (workWidth * workload->workOversamp))) * diff - 2.0;
-        y = ((double)(current / (workWidth * workload->workOversamp))) * diff - y_base;
+        x = x_0 + ((double)(current % (workWidth * workload->workOversamp))) * diff - size / 2.0;
+        y = y_0 + ((double)(current / (workWidth * workload->workOversamp))) * diff - y_base;
 
         /* Calculate the points trajectory ... */
         trajectoryLength = calculateTrajectory(workload, x, y);
@@ -106,8 +108,8 @@ void processWork(struct WorkersWork *workload, ULONG *workBuffer, ULONG workWidt
                 ObtainSemaphore(workload->lock);
                 for(i = 0; i < trajectoryLength; i++)
                 {
-                    ULONG px = (workload->workTrajectories[i].r + 2.0) / diff_sr;
-                    ULONG py = (workload->workTrajectories[i].i + y_base) / diff_sr;
+                    ULONG py = (workload->workTrajectories[i].r - y_0 + size / 2.0) / diff_sr;
+                    ULONG px = (workload->workTrajectories[i].i - x_0 + y_base) / diff_sr;
 
                     pos = (ULONG)(workWidth * py + px);
 

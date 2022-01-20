@@ -90,8 +90,6 @@ struct Task * NewCreateTaskTags(struct TagItem *tags)
         AddTask(task, entry, NULL);
     }
 
-    Printf("  Task: %08lx\n", task);
-
     return task;
 }
 

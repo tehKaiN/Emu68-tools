@@ -17,20 +17,75 @@
 #include <clib/alib_protos.h>
 #include <clib/timer_protos.h>
 
+#include <stdlib.h>
+
 #include "work.h"
 #include "support.h"
 
-CONST_STRPTR version = "$VER: Buddhabrot 1.0 (03.03.2017) �2017 The AROS Development Team";
+CONST_STRPTR version = "$VER: Buddhabrot 1.0 (03.03.2017) (C) 2017 The AROS Development Team";
 
-#define ARG_TEMPLATE "SIZE/K/N,THREADS/K/N,MAXITER/K/N,OVERSAMPLE/K/N,BUDDHA/S"
+struct Window * createMainWindow(int req_size)
+{
+    struct Screen *pubScreen;
+    struct Window *displayWin = NULL;
+    int width, height;
+
+    pubScreen = LockPubScreen(0);
+
+    if (pubScreen)
+    {
+        width = ((pubScreen->Width * 4) / 5);
+        height = (width * 3 / 4);
+
+        if (req_size == 0)
+        {
+            if (width < height)
+                req_size = width;
+            else
+                req_size = height;
+        }
+    }
+
+    if (req_size == 0)
+        req_size = 200;
+
+    if ((displayWin = OpenWindowTags(0,
+                                     WA_PubScreen, (Tag)pubScreen,
+                                     WA_Left, 0,
+                                     WA_Top, (pubScreen) ? pubScreen->BarHeight : 10,
+                                     WA_InnerWidth, req_size,
+                                     WA_InnerHeight, req_size,
+                                     WA_Title, (Tag) "Buddhabrot",
+                                     WA_SimpleRefresh, TRUE,
+                                     WA_CloseGadget, TRUE,
+                                     WA_DepthGadget, TRUE,
+                                     WA_DragBar, TRUE,
+                                     WA_SizeGadget, FALSE,
+                                     WA_SizeBBottom, FALSE,
+                                     WA_SizeBRight, FALSE,
+                                     WA_IDCMP, IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW,
+                                     TAG_DONE)) != NULL)
+    {
+        if (pubScreen)
+            UnlockPubScreen(0, pubScreen);
+    }
+
+    return displayWin;
+}
+
+
+#define ARG_TEMPLATE "X0/K,Y0/K,SCALE/K,SIZE/K/N,SUBDIVIDE/K/N,THREADS/K/N,MAXITER/K/N,OVERSAMPLE/K/N,BUDDHA/S"
 
 enum {
+    ARG_X0,
+    ARG_Y0,
+    ARG_SCALE,
     ARG_SIZE,
+    ARG_SUBDIVIDE,
     ARG_MAXCPU,
     ARG_MAXITER,
     ARG_OVERSAMPLE,
     ARG_BUDDHA,
-
 
     ARG_COUNT
 };
@@ -39,28 +94,39 @@ struct TimerBase *TimerBase = NULL;
 
 int main()
 {
-    struct SMPMaster workMaster;
-    ULONG args[ARG_COUNT] = { 0, 0, 0, 0 };
-    int max_cpus = 0;
-    ULONG coreCount = 1, core;
+    struct Task *masterTask = NULL;
+    struct MsgPort *masterPort = NULL;
+    struct MsgPort *mainPort = NULL;
+    struct MyMessage cmd;
+
+    struct RDArgs *rda;
+    struct Library *P96Base;
+    struct Window *displayWin;
+
+    ULONG args[ARG_COUNT] = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    ULONG coreCount = 1;
+    ULONG maxWork = 0;
+    ULONG oversample = 0;
+    ULONG subdivide = 1;
+    ULONG req_size = 0;
+    ULONG type = TYPE_NORMAL;
+
+    double x0 = 0.0;
+    double y0 = 0.0;
+    double size = 4.0;
+
+#if 0
+
     ULONG signals;
     struct Screen *pubScreen;
-    struct Window *displayWin;
+
     struct BitMap *outputBMap = NULL;
     struct MemList *coreML;
     struct SMPWorker *coreWorker;
     struct SMPWorkMessage *workMsg;
-    ULONG rawArgs[2];
     char buffer[100];
-    BOOL complete = FALSE, buddha = FALSE;
-    ULONG maxWork = 0;
-    ULONG oversample = 0;
-    struct RDArgs *rda;
-    struct Library *P96Base;
-
-    ULONG req_size = 0;
-
-    max_cpus = coreCount;
+    BOOL complete = FALSE;
+#endif
 
     struct MsgPort *timerPort = CreateMsgPort();
     struct timerequest *tr = CreateIORequest(timerPort, sizeof(struct timerequest));
@@ -93,8 +159,18 @@ int main()
     if (rda != NULL)
     {
         LONG *ptr = (LONG *)args[ARG_MAXCPU];
-        if (ptr)
-            max_cpus = *ptr;
+        if (ptr) {
+            coreCount = *ptr;
+            if (coreCount == 0)
+                coreCount = 1;
+        }
+
+        ptr = (LONG *)args[ARG_SUBDIVIDE];
+        if (ptr) {
+            subdivide = *ptr;
+            if (subdivide == 0)
+                subdivide = 1;
+        }
 
         ptr = (LONG *)args[ARG_SIZE];
         if (ptr)
@@ -121,10 +197,178 @@ int main()
         }
 
         if (args[ARG_BUDDHA])
-            buddha = TRUE;
+            type = TYPE_BUDDHA;
+
+        if (args[ARG_X0])
+            x0 = atof((char *)args[ARG_X0]);
+        
+        if (args[ARG_Y0])
+            y0 = atof((char *)args[ARG_Y0]);
+
+        if (args[ARG_SCALE])
+            size = atof((char *)args[ARG_SCALE]);
+
+        if (size == 0.0)
+            size = 4.0;
     }
 
-    coreCount = max_cpus;
+    if (type == TYPE_BUDDHA)
+    {
+        if (maxWork == 0)
+            maxWork = 4000;
+        if (oversample == 0)
+            oversample = 4;
+    }
+    else
+    {
+        if (maxWork == 0)
+            maxWork = 1000;
+        if (oversample == 0)
+            oversample = 1;
+    }
+
+    mainPort = CreateMsgPort();
+
+    SetTaskPri(FindTask(NULL), 5);
+
+    masterTask = NewCreateTask( TASKTAG_NAME,       (Tag)"Buddha Master",
+                                TASKTAG_PRI,        0,
+                                TASKTAG_PC,         (Tag)SMPTestMaster,
+                                TASKTAG_ARG1,       (Tag)mainPort,
+                                TAG_DONE);
+
+    Printf("Waiting for master to wake up\n");
+
+    WaitPort(mainPort);
+    struct Message *msg = GetMsg(mainPort);
+    masterPort = msg->mn_ReplyPort;
+    ReplyMsg(msg);
+
+    Printf("Master alive\n");
+
+    displayWin = createMainWindow(req_size);
+
+    if (displayWin)
+    {
+        int width, height;
+        BOOL windowClosing = FALSE;
+        ULONG signals;
+        struct BitMap *outputBMap;
+        ULONG *workBuffer;
+        ULONG *rgba;
+        struct RastPort *outBMRastPort;
+
+        width = (displayWin->Width - displayWin->BorderLeft - displayWin->BorderRight);
+        height = (displayWin->Height - displayWin->BorderTop - displayWin->BorderBottom);
+
+        outputBMap = AllocBitMap(   width,
+                                    height,
+                                    GetBitMapAttr(displayWin->WScreen->RastPort.BitMap, BMA_DEPTH),
+                                    BMF_DISPLAYABLE, displayWin->WScreen->RastPort.BitMap);
+        
+        outBMRastPort = (struct RastPort *)AllocMem(sizeof(struct RastPort), MEMF_ANY);
+        workBuffer = AllocMem(width * height * sizeof(ULONG), MEMF_ANY | MEMF_CLEAR);
+        rgba = AllocMem(width * height * sizeof(ULONG), MEMF_ANY | MEMF_CLEAR);
+
+        if (outputBMap && outBMRastPort && workBuffer && rgba)
+        {
+            struct RenderInfo ri;
+            ri.Memory = rgba;
+            ri.BytesPerRow = width * sizeof(ULONG);
+            ri.RGBFormat = RGBFB_R8G8B8A8;
+
+            InitRastPort(outBMRastPort);
+            outBMRastPort->BitMap = outputBMap;
+
+            p96WritePixelArray(&ri, 0, 0, outBMRastPort, 0, 0, width, height);
+
+            BltBitMapRastPort (outputBMap, 0, 0,
+                displayWin->RPort, displayWin->BorderLeft, displayWin->BorderTop,
+                width, height, 0xC0); 
+
+            Printf("Sending startup message to master\n");
+
+            cmd.mm_Type = MSG_STARTUP;
+            cmd.mm_Message.mn_ReplyPort = mainPort;
+            cmd.mm_Message.mn_Length = sizeof(cmd);
+            cmd.mm_Body.Startup.width = width;
+            cmd.mm_Body.Startup.height = height;
+            cmd.mm_Body.Startup.threadCount = coreCount;
+            cmd.mm_Body.Startup.subdivide = subdivide;
+            cmd.mm_Body.Startup.maxIterations = maxWork;
+            cmd.mm_Body.Startup.oversample = oversample;
+            cmd.mm_Body.Startup.type = type;
+            cmd.mm_Body.Startup.x0 = x0;
+            cmd.mm_Body.Startup.y0 = y0;
+            cmd.mm_Body.Startup.size = size;
+            cmd.mm_Body.Startup.workBuffer = workBuffer;
+
+            PutMsg(masterPort, &cmd.mm_Message);
+            WaitPort(mainPort);
+            GetMsg(mainPort);
+
+            Printf("Starting main work\n");
+
+            GetSysTime(&start_time);
+
+            cmd.mm_Type = MSG_STARTUP;
+
+            PutMsg(masterPort, &cmd.mm_Message);
+            WaitPort(mainPort);
+            GetMsg(mainPort);
+
+            while ((!windowClosing) && ((signals = Wait(SIGBREAKF_CTRL_D | (1 << displayWin->UserPort->mp_SigBit) | (1 << mainPort->mp_SigBit))) != 0))
+            {
+                // CTRL_D is show time signal
+                if (signals & SIGBREAKF_CTRL_D)
+                {
+                    GetSysTime(&now);
+                    SubTime(&now, &start_time);
+
+                    Printf("Rendering time: %ld:%02ld:%02ld\n",
+                        now.tv_secs / 3600, (now.tv_secs / 60) % 60, now.tv_secs % 60);
+                }
+
+                if (signals & (1 << displayWin->UserPort->mp_SigBit))
+                {
+                    struct IntuiMessage *msg;
+                    while ((msg = (struct IntuiMessage *)GetMsg(displayWin->UserPort)))
+                    {
+                        switch(msg->Class)
+                        {
+                            case IDCMP_CLOSEWINDOW:
+                                windowClosing = TRUE;
+                                break;
+
+                            case IDCMP_REFRESHWINDOW:
+                                BeginRefresh(msg->IDCMPWindow);
+                                BltBitMapRastPort (outputBMap, 0, 0,
+                                    msg->IDCMPWindow->RPort, msg->IDCMPWindow->BorderLeft, msg->IDCMPWindow->BorderTop,
+                                    width, height, 0xC0);
+                                EndRefresh(msg->IDCMPWindow, TRUE);
+                                break;
+                        }
+                        ReplyMsg((struct Message *)msg);
+                    }
+                }
+            }
+
+        }
+
+        CloseWindow(displayWin);
+
+        if (workBuffer)
+            FreeMem(workBuffer, sizeof(ULONG) * width * height);
+        if (rgba)
+            FreeMem(rgba, sizeof(ULONG) * width * height);
+        if (outBMRastPort)
+            FreeMem(outBMRastPort, sizeof(struct RastPort));
+        if (outputBMap)
+            FreeBitMap(outputBMap);
+    }
+
+#if 0
+
 
     /* Create a port that workers/masters will signal us using .. */
     if ((workMaster.smpm_MasterPort = CreateMsgPort()) == NULL)
@@ -132,28 +376,10 @@ int main()
 
     NewList(&workMaster.smpm_Workers);
 
-    Printf(version);
+    Printf("%s\n", version);
     Printf("Work Master MsgPort @ 0x%08lx\n", workMaster.smpm_MasterPort);
     Printf("SigTask = 0x%08lx\n", workMaster.smpm_MasterPort->mp_SigTask);
 
-    workMaster.smpm_WorkerCount = 0;
-    if (buddha)
-    {
-        workMaster.smpm_MaxWork = 4000;
-        workMaster.smpm_Oversample = 4;
-        workMaster.smpm_Buddha = TRUE;
-    }
-    else
-    {
-        workMaster.smpm_MaxWork = 1000;
-        workMaster.smpm_Oversample = 1;
-        workMaster.smpm_Buddha = FALSE;
-    }
-
-    if (maxWork)
-        workMaster.smpm_MaxWork = maxWork;
-    if (oversample && buddha)
-        workMaster.smpm_Oversample = oversample;
 
     InitSemaphore(&workMaster.smpm_Lock);
 
@@ -167,7 +393,6 @@ int main()
             if ((coreML->ml_ME[0].me_Addr = AllocMem(sizeof(struct SMPWorker), MEMF_PUBLIC|MEMF_CLEAR)) != NULL)
             {
                 coreWorker = coreML->ml_ME[0].me_Addr;
-                Printf("* CPU Worker Node allocated @ 0x%08lx\n", coreWorker);
 
                 coreML->ml_ME[1].me_Length = 22;
                 if ((coreML->ml_ME[1].me_Addr = AllocMem(22, MEMF_PUBLIC|MEMF_CLEAR)) != NULL)
@@ -176,9 +401,6 @@ int main()
 
                     _sprintf(coreML->ml_ME[1].me_Addr, "Worker #%d", core);
                     
-                    Printf("* Worker Task Name '%s'\n", coreML->ml_ME[1].me_Addr);
-                    Printf("* Worker Stack Size = %ld bytes\n", ((workMaster.smpm_MaxWork / 50000) + 1) * 40960);
-
                     coreWorker->smpw_MasterPort = workMaster.smpm_MasterPort;
                     coreWorker->smpw_Node.ln_Type = 0;
                     coreWorker->smpw_SyncTask = FindTask(NULL);
@@ -192,8 +414,6 @@ int main()
                                         TASKTAG_STACKSIZE,  (Tag)((workMaster.smpm_MaxWork / 50000) + 1) * 40960,
                                         TASKTAG_USERDATA,   (Tag)coreWorker,
                                         TAG_DONE);
-
-                    Printf("* Worker Task: 0x%08lx\n", coreWorker->smpw_Task);
 
                     if (coreWorker->smpw_Task)
                     {
@@ -243,6 +463,8 @@ int main()
     complete = FALSE;
     pubScreen = LockPubScreen(0);
 
+    SetTaskPri(FindTask(NULL), 5);
+
     if (req_size == 0)
         req_size = (pubScreen) ? ((pubScreen->Height - pubScreen->BarHeight) * 3) / 4 : 256;
 
@@ -290,8 +512,9 @@ int main()
         ri.RGBFormat = RGBFB_R8G8B8A8;
 
         Printf("Target BitMap @ 0x%08lx\n", outputBMap);
-        Printf("    %dx%dx%d\n", workMaster.smpm_Width, workMaster.smpm_Height, GetBitMapAttr(outputBMap, BMA_DEPTH));
+        Printf("    %ldx%ldx%ld\n", workMaster.smpm_Width, workMaster.smpm_Height, GetBitMapAttr(outputBMap, BMA_DEPTH));
         Printf("Buffer @ 0x%08lx\n", workMaster.smpm_WorkBuffer);
+        Printf("RGBA Buffer @ 0x%08lx\n", rgba);
 
         outBMRastPort = (struct RastPort *)AllocMem(sizeof(struct RastPort), MEMF_ANY);
         InitRastPort(outBMRastPort);
@@ -373,6 +596,15 @@ int main()
                     rawArgs[0] = coreCount;
                     _sprintf(buffer, "Buddhabrot fractal (0 workers on %ld threads) - Finished", coreCount);
                     SetWindowTitles( displayWin, buffer, NULL);
+
+                    p96WritePixelArray(&ri, 0, 0, 
+                            outBMRastPort,
+                            0, 0,
+                            workMaster.smpm_Width, workMaster.smpm_Height);
+
+                    BltBitMapRastPort (outputBMap, 0, 0,
+                            displayWin->RPort, displayWin->BorderLeft, displayWin->BorderTop,
+                            width, height, 0xC0); 
                 }
             }
             else if (signals & (1 << displayWin->UserPort->mp_SigBit))
@@ -421,7 +653,7 @@ int main()
         FreeMem(outBMRastPort, sizeof(struct RastPort));
         FreeBitMap(outputBMap);
     }
-    if (pubScreen) UnlockPubScreen(0, pubScreen);
+    else if (pubScreen) UnlockPubScreen(0, pubScreen);
 
     Printf("Waiting for workers to finish ...\n");
 
@@ -438,6 +670,10 @@ int main()
 
     Printf("Done ...\n");
 
+
+#endif
+
+    DeleteMsgPort(mainPort);
     CloseLibrary(P96Base);
 
     return 0;
