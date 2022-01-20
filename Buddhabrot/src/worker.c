@@ -119,21 +119,24 @@ void processWork(struct MyMessage *msg)
                 ObtainSemaphore(msg->mm_Body.WorkPackage.writeLock);
                 for(i = 0; i < trajectoryCurr; i++)
                 {
-                    ULONG py = (workTrajectories[i].r - x_0 + size / 2.0) / diff_sr;
-                    ULONG px = (workTrajectories[i].i - y_0 + y_base) / diff_sr;
+                    LONG py = (workTrajectories[i].r - x_0 + size / 2.0) / diff_sr;
+                    LONG px = (workTrajectories[i].i - y_0 + y_base) / diff_sr;
 
-                    pos = (ULONG)(workWidth * py + px);
-
-                    if (pos > 0 && pos < (workWidth * workHeight))
+                    if (px >= 0 && px < workWidth && py >= 0 && py < workHeight)
                     {
+                        pos = (ULONG)(workWidth * py + px);
 
-                        val = msg->mm_Body.WorkPackage.workBuffer[pos];
-                        
-                        if (val < 0xfff)
-                            val++;
+                        if (pos > 0 && pos < (workWidth * workHeight))
+                        {
 
-                        msg->mm_Body.WorkPackage.workBuffer[pos] = val;
+                            val = msg->mm_Body.WorkPackage.workBuffer[pos];
+                            
+                            if (val < 0xfff)
+                                val++;
 
+                            msg->mm_Body.WorkPackage.workBuffer[pos] = val;
+
+                        }
                     }
                 }
                 ReleaseSemaphore(msg->mm_Body.WorkPackage.writeLock);
