@@ -24,6 +24,7 @@ struct MyMessage {
             double              y0;
             double              size;
             struct SignalSemaphore *writeLock;
+            struct Task         *redrawTask;
         } Startup;
          
         struct {
@@ -39,6 +40,7 @@ struct MyMessage {
             double              y0;
             double              size;
             struct SignalSemaphore *writeLock;
+            struct Task         *redrawTask;
         } WorkPackage;
 
         struct {
@@ -77,7 +79,6 @@ enum {
     MSG_DIE,
     MSG_WORKPACKAGE,
     MSG_HUNGRY,
-    MSG_REDRAW,
     MSG_STATS,
     MSG_DONE,
 };

@@ -38,6 +38,7 @@ void SMPTestMaster(struct MsgPort *mainPort)
     double x0, y0;
     double size;
     struct SignalSemaphore *writeLock;
+    struct Task *redrawTask;
 
     Disable();
     threadCnt++;
@@ -81,6 +82,7 @@ void SMPTestMaster(struct MsgPort *mainPort)
                     y0 = cmd->mm_Body.Startup.y0;
                     size = cmd->mm_Body.Startup.size;
                     writeLock = cmd->mm_Body.Startup.writeLock;
+                    redrawTask = cmd->mm_Body.Startup.redrawTask;
 
                     /*
                         Now we have necessary information to prepare work packages. Get
@@ -117,6 +119,7 @@ void SMPTestMaster(struct MsgPort *mainPort)
                         m->mm_Body.WorkPackage.writeLock = writeLock;
                         m->mm_Body.WorkPackage.workStart = msgStart;
                         m->mm_Body.WorkPackage.workEnd = msgEnd;
+                        m->mm_Body.WorkPackage.redrawTask = redrawTask;
 
                         AddTail(&workPackages, &m->mm_Message.mn_Node);
                         tasksIn++;
@@ -180,12 +183,6 @@ void SMPTestMaster(struct MsgPort *mainPort)
                     }
                     {
                         struct MyMessage *m = AllocMem(sizeof(struct MyMessage), MEMF_ANY);
-                        m->mm_Type = MSG_REDRAW;
-                        m->mm_Message.mn_ReplyPort = masterPort;
-                        m->mm_Message.mn_Length = sizeof(struct MyMessage);
-                        PutMsg(mainPort, &m->mm_Message);
-
-                        m = AllocMem(sizeof(struct MyMessage), MEMF_ANY);
                         m->mm_Type = MSG_STATS;
                         m->mm_Message.mn_ReplyPort = masterPort;
                         m->mm_Message.mn_Length = sizeof(struct MyMessage);

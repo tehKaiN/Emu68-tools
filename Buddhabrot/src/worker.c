@@ -66,7 +66,11 @@ void processWork(struct MyMessage *msg)
     const ULONG workHeight = msg->mm_Body.WorkPackage.height;
     const ULONG trajectoryCapacity = msg->mm_Body.WorkPackage.maxIterations * 2;
     ULONG trajectoryCurr = 0;
-    
+#if 0
+    const ULONG maxLength = 1000;
+    ULONG currLength = 0;
+#endif
+
     const double x_0 = msg->mm_Body.WorkPackage.x0;
     const double y_0 = msg->mm_Body.WorkPackage.y0;
     const double size = msg->mm_Body.WorkPackage.size;
@@ -98,7 +102,15 @@ void processWork(struct MyMessage *msg)
             /* Calculate the points trajectory ... */
             trajectoryLength = calculateTrajectory(&workTrajectories[trajectoryCurr], msg->mm_Body.WorkPackage.maxIterations, x, y);
             trajectoryCurr += trajectoryLength;
+#if 0
+            currLength += trajectoryLength;
 
+            if (currLength >= maxLength)
+            {
+                currLength = 0;
+                Signal(msg->mm_Body.WorkPackage.redrawTask, SIGBREAKF_CTRL_D);
+            }
+#endif
             /* If there is no place for next iteration, flush the trajectory */
             if (trajectoryCapacity - trajectoryCurr < msg->mm_Body.WorkPackage.maxIterations)
             {
@@ -182,6 +194,8 @@ void processWork(struct MyMessage *msg)
             trajectoryCurr = 0;
         }
     }
+
+    Signal(msg->mm_Body.WorkPackage.redrawTask, SIGBREAKF_CTRL_D);
 
     if (workTrajectories)
     {

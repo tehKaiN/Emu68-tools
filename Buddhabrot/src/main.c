@@ -355,7 +355,7 @@ int main()
             redrawTask = NewCreateTask(
                     TASKTAG_NAME,       (Tag)"Buddha redraw",
                     TASKTAG_PC,         (Tag)redrawTaskMain,
-                    TASKTAG_PRI,        10,
+                    TASKTAG_PRI,        0,
                     TASKTAG_ARG1,       (Tag)&rm,
                     TASKTAG_STACKSIZE,  65536,
                     TAG_DONE);
@@ -383,6 +383,7 @@ int main()
             cmd.mm_Body.Startup.size = size;
             cmd.mm_Body.Startup.workBuffer = workBuffer;
             cmd.mm_Body.Startup.writeLock = &lock;
+            cmd.mm_Body.Startup.redrawTask = redrawTask;
 
             PutMsg(masterPort, &cmd.mm_Message);
             WaitPort(mainPort);
@@ -397,6 +398,7 @@ int main()
                     struct MyMessage *msg;
                     while ((msg = (struct MyMessage *)GetMsg(mainPort)))
                     {
+                        VPrintf("msg=%08lx\n", msg);
                         /* If we receive our own message, ignore it */
                         if (&cmd == msg)
                             continue;
@@ -404,41 +406,6 @@ int main()
                         if (msg->mm_Message.mn_Node.ln_Type == NT_REPLYMSG)
                             continue;
 
-                        if (msg->mm_Type == MSG_REDRAW)
-                        {
-                            static int cnt = 0;
-                            ReplyMsg(&msg->mm_Message);
-                            Printf("Redraw message %ld...\n", ++cnt);
-
-                            Signal(redrawTask, SIGBREAKF_CTRL_D);
-#if 0
-                            for (ULONG i = 0; i < width * height; i++)
-                            {
-                                ULONG rgb = workBuffer[i];
-                                ULONG r=96*rgb,g=128*rgb,b=256*rgb;
-
-                                b = (b + 255) / 512;
-                                r = (r + 255) / 512;
-                                g = (g + 255) / 512;
-
-                                if (b > 255) b = 255;
-                                if (r > 255) r = 255;
-                                if (g > 255) g = 255;
-
-                                ULONG c = 0xff | (r << 8) | (g << 16) | (b << 24);
-                                rgba[i] = c;
-                            }
-
-                            p96WritePixelArray(&ri, 0, 0, 
-                                                outBMRastPort,
-                                                0, 0,
-                                                width, height);
-
-                            BltBitMapRastPort (outputBMap, 0, 0,
-                                displayWin->RPort, displayWin->BorderLeft, displayWin->BorderTop,
-                                width, height, 0xC0);
-#endif
-                        }
                         else if (msg->mm_Type == MSG_STATS)
                         {
                             char tmpbuf[128];
