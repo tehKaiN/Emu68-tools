@@ -169,7 +169,7 @@ int main()
     ULONG coreCount = 1;
     ULONG maxWork = 0;
     ULONG oversample = 0;
-    ULONG subdivide = 16;
+    ULONG subdivide = 0;
     ULONG req_size = 0;
     ULONG type = TYPE_NORMAL;
 
@@ -312,6 +312,9 @@ int main()
 
         width = (displayWin->Width - displayWin->BorderLeft - displayWin->BorderRight);
         height = (displayWin->Height - displayWin->BorderTop - displayWin->BorderBottom);
+
+        if (subdivide == 0)
+            subdivide = width / 16;
 
         workBuffer = AllocMem(width * height * sizeof(ULONG), MEMF_ANY | MEMF_CLEAR);
         rgba = AllocMem(width * height * sizeof(ULONG), MEMF_ANY | MEMF_CLEAR);
