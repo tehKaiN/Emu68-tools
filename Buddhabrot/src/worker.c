@@ -23,16 +23,7 @@ typedef struct {
 	double i;
 } complexno_t;
 
-struct WorkersWork
-{
-    ULONG         workMax;
-    ULONG         workOversamp;
-    ULONG         workOver2;
-    struct SignalSemaphore  *lock;
-    complexno_t workTrajectories[];  
-};
-
-ULONG calculateTrajectory(struct WorkersWork *workload, double r, double i)
+ULONG calculateTrajectory(complexno_t *workTrajectories, ULONG workMax, double r, double i)
 {
     double realNo, imaginaryNo, realNo2, imaginaryNo2, tmp;
     ULONG trajectory;
@@ -41,7 +32,7 @@ ULONG calculateTrajectory(struct WorkersWork *workload, double r, double i)
     realNo = 0;
     imaginaryNo = 0;
 
-    for(trajectory = 0; trajectory < workload->workMax; trajectory++)
+    for(trajectory = 0; trajectory < workMax; trajectory++)
     {
         /* Check if it's out of circle with radius 2 */
         realNo2 = realNo * realNo;
@@ -56,171 +47,170 @@ ULONG calculateTrajectory(struct WorkersWork *workload, double r, double i)
         realNo = tmp;
 
         /* Store */
-        workload->workTrajectories[trajectory].r = realNo;
-        workload->workTrajectories[trajectory].i = imaginaryNo;
+        if (workTrajectories)
+        {
+            workTrajectories[trajectory].r = realNo;
+            workTrajectories[trajectory].i = imaginaryNo;
+        }
     }
 
     return 0;
 }
 
-double x_0 = 0.0, y_0 = 0, size = 4.0;
-
-void processWork(struct WorkersWork *workload, ULONG *workBuffer, ULONG workWidth, ULONG workHeight, ULONG workStart, ULONG workEnd, BOOL buddha)
+void processWork(struct MyMessage *msg)
 {
-    /*
-    double xlo = -1.0349498063694267;
-    double ylo = -0.36302123503184713;
-    double xhi = -0.887179105732484;
-    double yhi = -0.21779830509554143;
-    */
     ULONG trajectoryLength;
     ULONG current;
+    const ULONG workOver2 = msg->mm_Body.WorkPackage.oversample * msg->mm_Body.WorkPackage.oversample;
+    const ULONG workWidth = msg->mm_Body.WorkPackage.width;
+    const ULONG workHeight = msg->mm_Body.WorkPackage.height;
     
+    double x_0 = msg->mm_Body.WorkPackage.x0;
+    double y_0 = msg->mm_Body.WorkPackage.y0;
+    double size = msg->mm_Body.WorkPackage.size;
+
     double x, y;
-    double diff = size / ((double)(workWidth * workload->workOversamp));
+    double diff = size / ((double)(msg->mm_Body.WorkPackage.width * msg->mm_Body.WorkPackage.oversample));
     double y_base = size / 2.0 - (diff * 2.0 / size);
-    double diff_sr = size / (double)workWidth;
+    double diff_sr = size / (double)msg->mm_Body.WorkPackage.width;
 
-    DWORK(
-        bug("[SMP-Test:Worker] %s: Buffer @ 0x%p\n", __func__, workBuffer);
-        bug("[SMP-Test:Worker] %s:           %dx%d\n", __func__, workWidth, workHeight);
-        bug("[SMP-Test:Worker] %s: start : %d, end %d\n", __func__, workStart, workEnd);
-    )
+    complexno_t *workTrajectories = NULL;
+    
+    if (msg->mm_Body.WorkPackage.type == TYPE_BUDDHA)
+    {
+        workTrajectories = AllocMem(sizeof(complexno_t) * msg->mm_Body.WorkPackage.maxIterations, MEMF_CLEAR|MEMF_ANY);
+    }
 
-    for (current = workStart * workload->workOver2; current < (workEnd + 1) * workload->workOver2 - 1; current++)
+    for (current = msg->mm_Body.WorkPackage.workStart * workOver2;
+         current < (msg->mm_Body.WorkPackage.workEnd + 1) * workOver2;
+         current++)
     {
         ULONG val;
 
         /* Locate the point on the complex plane */
-        x = x_0 + ((double)(current % (workWidth * workload->workOversamp))) * diff - size / 2.0;
-        y = y_0 + ((double)(current / (workWidth * workload->workOversamp))) * diff - y_base;
+        x = x_0 + ((double)(current % (workWidth * msg->mm_Body.WorkPackage.oversample))) * diff - size / 2.0;
+        y = y_0 + ((double)(current / (workWidth * msg->mm_Body.WorkPackage.oversample))) * diff - y_base;
 
         /* Calculate the points trajectory ... */
-        trajectoryLength = calculateTrajectory(workload, x, y);
+        trajectoryLength = calculateTrajectory(workTrajectories, msg->mm_Body.WorkPackage.maxIterations, x, y);
 
-        if (buddha)
+        if (msg->mm_Body.WorkPackage.type == TYPE_BUDDHA)
         {
             /* Update the display if it escapes */
             if (trajectoryLength > 0)
             {
                 ULONG pos;
                 int i;
-                ObtainSemaphore(workload->lock);
+                ObtainSemaphore(msg->mm_Body.WorkPackage.writeLock);
                 for(i = 0; i < trajectoryLength; i++)
                 {
-                    ULONG py = (workload->workTrajectories[i].r - y_0 + size / 2.0) / diff_sr;
-                    ULONG px = (workload->workTrajectories[i].i - x_0 + y_base) / diff_sr;
+                    ULONG py = (workTrajectories[i].r - y_0 + size / 2.0) / diff_sr;
+                    ULONG px = (workTrajectories[i].i - x_0 + y_base) / diff_sr;
 
                     pos = (ULONG)(workWidth * py + px);
 
                     if (pos > 0 && pos < (workWidth * workHeight))
                     {
 
-                        val = workBuffer[pos];
+                        val = msg->mm_Body.WorkPackage.workBuffer[pos];
                         
                         if (val < 0xfff)
                             val++;
 
-                        workBuffer[pos] = val;
+                        msg->mm_Body.WorkPackage.workBuffer[pos] = val;
 
                     }
                 }
-                ReleaseSemaphore(workload->lock);
+                ReleaseSemaphore(msg->mm_Body.WorkPackage.writeLock);
             }
         }
         else
         {
             (void)diff_sr;
 
-            ULONG px = (current % (workWidth * workload->workOversamp)) / workload->workOversamp;
-            ULONG py = current / (workWidth * workload->workOver2);
+            ULONG px = (current % (workWidth * msg->mm_Body.WorkPackage.oversample)) / msg->mm_Body.WorkPackage.oversample;
+            ULONG py = current / (workWidth * workOver2);
 
             ULONG pos = px + py * workWidth;
 
-            val = workBuffer[pos];
+            val = msg->mm_Body.WorkPackage.workBuffer[pos];
 
-            val+= 10*trajectoryLength / workload->workOver2;
+            val+= 10*trajectoryLength / msg->mm_Body.WorkPackage.oversample;
             
             if (val > 0xfff)
                 val = 0xfff;
 
-            workBuffer[pos] = val;
+            msg->mm_Body.WorkPackage.workBuffer[pos] = val;
         }
+    }
+
+    if (workTrajectories)
+    {
+        FreeMem(workTrajectories, sizeof(complexno_t) * msg->mm_Body.WorkPackage.maxIterations);
     }
 }
 
 /*
  * This Task processes work received
  */
-void SMPTestWorker()
+void SMPTestWorker(struct MsgPort *masterPort)
 {
     struct Task *thisTask = FindTask(NULL);
-    struct SMPWorker *worker = thisTask->tc_UserData;
-    struct SMPWorkMessage *workMsg;
-    struct WorkersWork    *workPrivate;
-    BOOL doWork = TRUE, buddha = FALSE;
+    struct MsgPort *port = CreateMsgPort();
+    struct MyMessage cmd;
 
-    if ((worker) && (worker->smpw_MasterPort))
+    Disable();
+    threadCnt++;
+    Enable();
+
+    cmd.mm_Message.mn_Length = sizeof(cmd);
+    cmd.mm_Message.mn_ReplyPort = port;
+
+    if (port)
     {
-        worker->smpw_Node.ln_Type = 0;
+        BOOL done = FALSE;
 
-        worker->smpw_MsgPort = CreateMsgPort();
+        cmd.mm_Type = MSG_HUNGRY;
+        PutMsg(masterPort, &cmd.mm_Message);
 
-        workPrivate = AllocMem(sizeof(struct WorkersWork) + (worker->smpw_MaxWork * sizeof(complexno_t)), MEMF_CLEAR|MEMF_ANY);
-        
-        if (workPrivate)
+        while(!done)
         {
-            workPrivate->workMax = worker->smpw_MaxWork;
-            workPrivate->workOversamp = worker->smpw_Oversample;
-            workPrivate->workOver2 = workPrivate->workOversamp * workPrivate->workOversamp;
-            workPrivate->lock = worker->smpw_Lock;
+            struct MyMessage *msg;
 
-            while (doWork)
+            WaitPort(port);
+            while((msg = (struct MyMessage *)GetMsg(port)) != NULL)
             {
-                ULONG workWidth, workHeight, workStart, workEnd;
-                ULONG *workBuffer;
-                ULONG workType;
+                /* If we receive our own message, ignore it */
+                if (&cmd == msg)
+                    continue;
+                
+                /* Ignore reply messages */
+                if (msg->mm_Message.mn_Node.ln_Type == NT_REPLYMSG)
+                    continue;
 
-                /* we are ready for work .. */
-                worker->smpw_Node.ln_Type = 1;
-                Signal(worker->smpw_SyncTask, SIGBREAKF_CTRL_C);
-                WaitPort(worker->smpw_MsgPort);
-
-                while((workMsg = (struct SMPWorkMessage *) GetMsg(worker->smpw_MsgPort)))
+                if (msg->mm_Type == MSG_WORKPACKAGE)
                 {
-                    buddha = FALSE;
-
-                    /* cache the requested work and free the message ... */
-                    workType = workMsg->smpwm_Type;
-                    workBuffer = workMsg->smpwm_Buffer;
-                    workWidth = workMsg->smpwm_Width;
-                    workHeight = workMsg->smpwm_Height;
-                    workStart = workMsg->smpwm_Start;
-                    workEnd = workMsg->smpwm_End;
-
-                    FreeMem(workMsg, sizeof(struct SMPWorkMessage));
-                    
-                    /* now process it .. */
-                    switch (workType)
-                    {
-                        case SPMWORKTYPE_FINISHED:
-                            doWork = FALSE;
-                            break;
-                        case SPMWORKTYPE_BUDDHA:
-                            buddha = TRUE;
-                        case SPMWORKTYPE_MANDLEBROT: // fallthrough
-                            processWork(workPrivate, workBuffer, workWidth, workHeight, workStart, workEnd, buddha);
-
-                            /* let our "parent" know we are done .. */
-                            Signal(worker->smpw_MasterPort->mp_SigTask, SIGBREAKF_CTRL_D);
-                            break;
-                    }
+                    processWork(msg);
+                    ReplyMsg(&msg->mm_Message);
+                    cmd.mm_Type = MSG_HUNGRY;
+                    PutMsg(masterPort, &cmd.mm_Message);
+                }
+                else if (msg->mm_Type == MSG_DIE)
+                {
+                    Forbid();
+                    done = TRUE;
+                    FreeMem(msg, msg->mm_Message.mn_Length);
                 }
             }
-            FreeMem(workPrivate, sizeof(struct WorkersWork) + (workPrivate->workMax * sizeof(complexno_t)));
         }
-        Remove(&worker->smpw_Node);
-        DeleteMsgPort(worker->smpw_MsgPort);
-        Signal(worker->smpw_MasterPort->mp_SigTask, SIGBREAKF_CTRL_C);
     }
+
+    /* Drain messages from the port */
+    if (port)
+    {
+        struct MyMessage *msg;
+        while ((msg = (struct MyMessage *)GetMsg(port)) != NULL);
+    }
+
+    DeleteMsgPort(port);
 }

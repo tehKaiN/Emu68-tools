@@ -17,67 +17,205 @@
  * This Task sends work out to the "Workers" to process
  */
 
-ULONG WorkSubdivide = 256;
-
 void SMPTestMaster(struct MsgPort *mainPort)
 {
+    BOOL timeToDie = FALSE;
     struct Task *thisTask = FindTask(NULL);
-    struct SMPMaster *workMaster = thisTask->tc_UserData;
-    struct SMPWorkMessage *workMsg;
-    struct SMPWorker *coreWorker;
-    struct MsgPort *masterPort;
-    
-    NewList(&workMaster->smpm_Tasks);
+    struct MsgPort *masterPort = CreateMsgPort();
+    struct MyMessage msg;
+    struct Task **slaves;
+    struct List workPackages;
 
-    WaitPort(mainPort);
+    ULONG tasksIn = 0;
+    ULONG tasksOut = 0;
+    ULONG width, height;
+    ULONG slaveCount;
+    ULONG subdivide;
+    ULONG maxIterations;
+    ULONG oversample;
+    ULONG type;
+    ULONG *workBuffer;
+    double x0, y0;
+    double size;
+    struct SignalSemaphore *writeLock;
 
+    Disable();
+    threadCnt++;
+    Enable();
 
-    if (workMaster)
-    {
-        ULONG workPortion = ((workMaster->smpm_Width * workMaster->smpm_Height) / workMaster->smpm_WorkerCount) / WorkSubdivide; 
-        ULONG msgStart = 0;
-        const ULONG msgStop = workMaster->smpm_Width * workMaster->smpm_Height;
+    NewList(&workPackages);
 
-        if (workPortion == 0)
-            workPortion = 1;
+    msg.mm_Type = -1;
+    msg.mm_Message.mn_Length = sizeof(msg);
+    msg.mm_Message.mn_ReplyPort = masterPort;
 
-        while (msgStart < msgStop)
+    PutMsg(mainPort, &msg.mm_Message);
+
+    do {
+        struct MyMessage *cmd;
+
+        WaitPort(masterPort);
+        
+        while((cmd = (struct MyMessage *)GetMsg(masterPort)) != NULL)
         {
-            ULONG msgEnd = msgStart + workPortion - 1;
+            /* If we receive our own message, ignore it */
+            if (cmd == &msg)
+                continue;
 
-            if ((workMsg = (struct SMPWorkMessage *)AllocMem(sizeof(struct SMPWorkMessage), MEMF_CLEAR)) != NULL)
+            /* In case of reply message discard it */
+            if (cmd->mm_Message.mn_Node.ln_Type == NT_REPLYMSG)
+                FreeMem(cmd, cmd->mm_Message.mn_Length);
+
+            switch(cmd->mm_Type)
             {
-                /* prepare the work to be done ... */
-                if (workMaster->smpm_Buddha)
-                    workMsg->smpwm_Type = SPMWORKTYPE_BUDDHA;
-                else
-                    workMsg->smpwm_Type = SPMWORKTYPE_MANDLEBROT;
+                case MSG_STARTUP:
+                    width = cmd->mm_Body.Startup.width;
+                    height = cmd->mm_Body.Startup.height;
+                    slaveCount = cmd->mm_Body.Startup.threadCount;
+                    subdivide = cmd->mm_Body.Startup.subdivide;
+                    maxIterations = cmd->mm_Body.Startup.maxIterations;
+                    oversample = cmd->mm_Body.Startup.oversample;
+                    type = cmd->mm_Body.Startup.type;
+                    workBuffer = cmd->mm_Body.Startup.workBuffer;
+                    x0 = cmd->mm_Body.Startup.x0;
+                    y0 = cmd->mm_Body.Startup.y0;
+                    size = cmd->mm_Body.Startup.size;
+                    writeLock = cmd->mm_Body.Startup.writeLock;
 
-                workMsg->smpwm_Buffer = workMaster->smpm_WorkBuffer;
-                workMsg->smpwm_Width = workMaster->smpm_Width;
-                workMsg->smpwm_Height = workMaster->smpm_Height;
-                workMsg->smpwm_Start = msgStart;
-                workMsg->smpwm_End = msgEnd;
+                    /*
+                        Now we have necessary information to prepare work packages. Get
+                        entire number of pixels of the image and split that across threads.
+                        Use subdivide to make the work packages smaller.
+                    */
+                    ULONG workPortion = ((width * height) / slaveCount) / subdivide;
+                    ULONG msgStart = 0;
+                    const ULONG msgStop = width * height;
 
-                /* send out the work to an available worker... */
-                do {
-                    ForeachNode(&workMaster->smpm_Workers, coreWorker)
+                    if (workPortion < 20)
+                        workPortion = 20;
+
+                    while (msgStart < msgStop)
                     {
-                        if ((workMsg) && (coreWorker->smpw_Node.ln_Type == 1) && (coreWorker->smpw_MsgPort))
+                        ULONG msgEnd = msgStart + workPortion - 1;
+
+                        if (msgEnd >= msgStop)
+                            msgEnd = msgStop - 1;
+
+                        struct MyMessage *m = AllocMem(sizeof(struct MyMessage), MEMF_ANY);
+                        m->mm_Message.mn_Length = sizeof(struct MyMessage);
+                        m->mm_Message.mn_ReplyPort = masterPort;
+                        m->mm_Type = MSG_WORKPACKAGE;
+                        m->mm_Body.WorkPackage.width = width;
+                        m->mm_Body.WorkPackage.height = height;
+                        m->mm_Body.WorkPackage.maxIterations = maxIterations;
+                        m->mm_Body.WorkPackage.oversample = oversample;
+                        m->mm_Body.WorkPackage.type = type;
+                        m->mm_Body.WorkPackage.workBuffer = workBuffer;
+                        m->mm_Body.WorkPackage.x0 = x0;
+                        m->mm_Body.WorkPackage.y0 = y0;
+                        m->mm_Body.WorkPackage.size = size;
+                        m->mm_Body.WorkPackage.writeLock = writeLock;
+                        m->mm_Body.WorkPackage.workStart = msgStart;
+                        m->mm_Body.WorkPackage.workEnd = msgEnd;
+
+                        AddTail(&workPackages, &m->mm_Message.mn_Node);
+                        tasksIn++;
+
+                        msgStart = msgEnd + 1;
+                    }
+
+                    /*
+                        Create requested number of threads, every of them will send MSG_HUNGRY message
+                    */
+                    slaves = AllocMem(slaveCount * sizeof(APTR), MEMF_PUBLIC);
+                    for (int i=0; i < slaveCount; i++)
+                    {
+                        char tmpbuf[32];
+                        _sprintf(tmpbuf, "Buddha Worker #%d", i);
+                        slaves[i] = NewCreateTask(
+                                        TASKTAG_NAME,       (Tag)tmpbuf,
+                                        TASKTAG_PRI,        0,
+                                        TASKTAG_PC,         (Tag)SMPTestWorker,
+                                        TASKTAG_ARG1,       (Tag)masterPort,
+                                        TAG_DONE);
+                    }
+
+                    ReplyMsg(&cmd->mm_Message);
+                    break;
+                
+                case MSG_HUNGRY:
+                    /* Slave is asking for work, as long as we have some, send it */
+                    if (!IsListEmpty(&workPackages))
+                    {
+                        struct MyMessage *m = (struct MyMessage *)RemHead(&workPackages);
+                        struct MsgPort *p = cmd->mm_Message.mn_ReplyPort;
+                        tasksOut++;
+                        tasksIn--;
+
+                        PutMsg(p, &m->mm_Message);
+                    }
+                    else
+                    {
+                        struct MyMessage *m = AllocMem(sizeof(struct MyMessage), MEMF_ANY);
+                        struct MsgPort *p = cmd->mm_Message.mn_ReplyPort;
+
+                        m->mm_Type = MSG_DIE;
+                        m->mm_Message.mn_Length = sizeof(struct MyMessage);
+                        m->mm_Message.mn_ReplyPort = masterPort;
+
+                        PutMsg(p, &m->mm_Message);
+                        if (slaveCount != 0)
+                            slaveCount--;
+
+                        if (slaveCount == 0)
                         {
-                            coreWorker->smpw_Node.ln_Type = 0;
-                            PutMsg(coreWorker->smpw_MsgPort, (struct Message *)workMsg);
-                            workMsg = NULL;
-                            break;
+                            m = AllocMem(sizeof(struct MyMessage), MEMF_ANY);
+                            m->mm_Type = MSG_DONE;
+                            m->mm_Message.mn_ReplyPort = masterPort;
+                            m->mm_Message.mn_Length = sizeof(struct MyMessage);
+
+                            PutMsg(mainPort, &m->mm_Message);
                         }
                     }
-                } while (workMsg);
+                    {
+                        struct MyMessage *m = AllocMem(sizeof(struct MyMessage), MEMF_ANY);
+                        m->mm_Type = MSG_REDRAW;
+                        m->mm_Message.mn_ReplyPort = masterPort;
+                        m->mm_Message.mn_Length = sizeof(struct MyMessage);
+                        PutMsg(mainPort, &m->mm_Message);
+
+                        m = AllocMem(sizeof(struct MyMessage), MEMF_ANY);
+                        m->mm_Type = MSG_STATS;
+                        m->mm_Message.mn_ReplyPort = masterPort;
+                        m->mm_Message.mn_Length = sizeof(struct MyMessage);
+                        m->mm_Body.Stats.tasksIn = tasksIn;
+                        m->mm_Body.Stats.tasksOut = tasksOut;
+                        m->mm_Body.Stats.tasksWork = slaveCount;
+                        PutMsg(mainPort, &m->mm_Message);
+                    }
+                    break;
+
+                case MSG_DIE:
+                    /* Don't reply DIE message. Free it instead */
+                    FreeMem(cmd, cmd->mm_Message.mn_Length);
+                    
+                    /* Purge remaining tasks */
+                    if (!IsListEmpty(&workPackages))
+                    {
+                        struct MyMessage *m;
+                        while ((m = (struct MyMessage *)RemHead(&workPackages)) != NULL)
+                        {
+                            FreeMem(m, m->mm_Message.mn_Length);
+                        }
+                    }
+                    timeToDie = TRUE;
+                    break;
             }
-
-            msgStart = msgEnd + 1;
         }
-    }
+    } while(!(timeToDie && slaveCount == 0));
 
-    workMaster->smpm_Master = NULL;
-    Signal(workMaster->smpm_MasterPort->mp_SigTask, SIGBREAKF_CTRL_D);
+    DeleteMsgPort(masterPort);
+
+    if (slaves)
+        FreeMem(slaves, slaveCount * sizeof(APTR));
 }

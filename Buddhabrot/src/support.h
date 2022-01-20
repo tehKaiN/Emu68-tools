@@ -31,4 +31,6 @@ for                                                    \
     node = (void *)(((struct Node *)(node))->ln_Succ)  \
 )
 
+extern ULONG threadCnt;
+
 #endif /* _SUPPORT_H */

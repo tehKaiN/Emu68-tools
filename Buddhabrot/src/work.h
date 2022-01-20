@@ -23,8 +23,29 @@ struct MyMessage {
             double              x0;
             double              y0;
             double              size;
+            struct SignalSemaphore *writeLock;
         } Startup;
          
+        struct {
+            ULONG               width;
+            ULONG               height;
+            ULONG               maxIterations;
+            ULONG               oversample;
+            ULONG               type;
+            ULONG               workStart;
+            ULONG               workEnd;
+            ULONG               *workBuffer;
+            double              x0;
+            double              y0;
+            double              size;
+            struct SignalSemaphore *writeLock;
+        } WorkPackage;
+
+        struct {
+            ULONG   tasksIn;
+            ULONG   tasksOut;
+            ULONG   tasksWork;
+        } Stats;
 #if 0
         struct {
             ULONG               TileX;
@@ -41,21 +62,26 @@ struct MyMessage {
             BYTE                explicitMode;
         } RenderTile;
 
-        struct {
-            ULONG   tasksIn;
-            ULONG   tasksOut;
-            ULONG   tasksWork;
-        } Stats;
+
 #endif
     } mm_Body;
 };
 
-#define TYPE_NORMAL     0
-#define TYPE_BUDDHA     1
+enum {
+    TYPE_NORMAL,
+    TYPE_BUDDHA
+};
 
-#define MSG_STARTUP     0
-#define MSG_DIE         1
-#define MSG_START       2
+enum {
+    MSG_STARTUP,
+    MSG_DIE,
+    MSG_WORKPACKAGE,
+    MSG_HUNGRY,
+    MSG_REDRAW,
+    MSG_STATS,
+    MSG_DONE,
+};
+
 
 #if 0
 #define MSG_REDRAWTILE  2

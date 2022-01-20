@@ -7,6 +7,8 @@
 #include <clib/alib_protos.h>
 #include <clib/dos_protos.h>
 
+ULONG threadCnt;
+
 int _strlen(CONST_STRPTR str)
 {
     int len = 0;

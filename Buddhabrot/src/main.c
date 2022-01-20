@@ -34,8 +34,8 @@ struct Window * createMainWindow(int req_size)
 
     if (pubScreen)
     {
-        width = ((pubScreen->Width * 4) / 5);
-        height = (width * 3 / 4);
+        width = ((pubScreen->Width * 3) / 4);
+        height = ((pubScreen->Height * 3) / 4);
 
         if (req_size == 0)
         {
@@ -94,6 +94,7 @@ struct TimerBase *TimerBase = NULL;
 
 int main()
 {
+    struct SignalSemaphore lock;
     struct Task *masterTask = NULL;
     struct MsgPort *masterPort = NULL;
     struct MsgPort *mainPort = NULL;
@@ -107,7 +108,7 @@ int main()
     ULONG coreCount = 1;
     ULONG maxWork = 0;
     ULONG oversample = 0;
-    ULONG subdivide = 1;
+    ULONG subdivide = 16;
     ULONG req_size = 0;
     ULONG type = TYPE_NORMAL;
 
@@ -127,6 +128,8 @@ int main()
     char buffer[100];
     BOOL complete = FALSE;
 #endif
+
+    InitSemaphore(&lock);
 
     struct MsgPort *timerPort = CreateMsgPort();
     struct timerequest *tr = CreateIORequest(timerPort, sizeof(struct timerequest));
@@ -229,10 +232,8 @@ int main()
 
     mainPort = CreateMsgPort();
 
-    SetTaskPri(FindTask(NULL), 5);
-
     masterTask = NewCreateTask( TASKTAG_NAME,       (Tag)"Buddha Master",
-                                TASKTAG_PRI,        0,
+                                TASKTAG_PRI,        3,
                                 TASKTAG_PC,         (Tag)SMPTestMaster,
                                 TASKTAG_ARG1,       (Tag)mainPort,
                                 TAG_DONE);
@@ -252,6 +253,7 @@ int main()
     {
         int width, height;
         BOOL windowClosing = FALSE;
+        BOOL renderingDone = FALSE;
         ULONG signals;
         struct BitMap *outputBMap;
         ULONG *workBuffer;
@@ -302,31 +304,102 @@ int main()
             cmd.mm_Body.Startup.y0 = y0;
             cmd.mm_Body.Startup.size = size;
             cmd.mm_Body.Startup.workBuffer = workBuffer;
+            cmd.mm_Body.Startup.writeLock = &lock;
 
             PutMsg(masterPort, &cmd.mm_Message);
             WaitPort(mainPort);
             GetMsg(mainPort);
-
-            Printf("Starting main work\n");
 
             GetSysTime(&start_time);
 
-            cmd.mm_Type = MSG_STARTUP;
-
-            PutMsg(masterPort, &cmd.mm_Message);
-            WaitPort(mainPort);
-            GetMsg(mainPort);
-
-            while ((!windowClosing) && ((signals = Wait(SIGBREAKF_CTRL_D | (1 << displayWin->UserPort->mp_SigBit) | (1 << mainPort->mp_SigBit))) != 0))
+            while (!(windowClosing && renderingDone) && ((signals = Wait((1 << displayWin->UserPort->mp_SigBit) | (1 << mainPort->mp_SigBit))) != 0))
             {
-                // CTRL_D is show time signal
-                if (signals & SIGBREAKF_CTRL_D)
+                if (signals & (1 << mainPort->mp_SigBit))
                 {
-                    GetSysTime(&now);
-                    SubTime(&now, &start_time);
+                    struct MyMessage *msg;
+                    while ((msg = (struct MyMessage *)GetMsg(mainPort)))
+                    {
+                        /* If we receive our own message, ignore it */
+                        if (&cmd == msg)
+                            continue;
 
-                    Printf("Rendering time: %ld:%02ld:%02ld\n",
-                        now.tv_secs / 3600, (now.tv_secs / 60) % 60, now.tv_secs % 60);
+                        if (msg->mm_Type == MSG_REDRAW)
+                        {
+                            for (ULONG i = 0; i < width * height; i++)
+                            {
+                                ULONG rgb = workBuffer[i];
+                                ULONG r=96*rgb,g=128*rgb,b=256*rgb;
+
+                                b = (b + 255) / 512;
+                                r = (r + 255) / 512;
+                                g = (g + 255) / 512;
+
+                                if (b > 255) b = 255;
+                                if (r > 255) r = 255;
+                                if (g > 255) g = 255;
+
+                                ULONG c = 0xff | (b << 8) | (g << 16) | (r << 24);
+                                rgba[i] = c;
+                            }
+
+                            p96WritePixelArray(&ri, 0, 0, 
+                                                outBMRastPort,
+                                                0, 0,
+                                                width, height);
+
+                            BltBitMapRastPort (outputBMap, 0, 0,
+                                displayWin->RPort, displayWin->BorderLeft, displayWin->BorderTop,
+                                width, height, 0xC0);
+                            
+                            ReplyMsg(&msg->mm_Message);
+                        }
+                        else if (msg->mm_Type == MSG_STATS)
+                        {
+                            char tmpbuf[128];
+
+                            GetSysTime(&now);
+                            SubTime(&now, &start_time);
+                            if (renderingDone)
+                            {
+                                _sprintf(tmpbuf, "Buddhabrot finished: %d:%02d:%02d",
+                                    now.tv_secs / 3600,
+                                    (now.tv_secs / 60) % 60,
+                                    now.tv_secs % 60);
+                            }
+                            else
+                            {
+                                _sprintf(tmpbuf, "Buddhabrot (%d in work, %d waiting, %d done): %d:%02d:%02d",
+                                        msg->mm_Body.Stats.tasksWork, 
+                                        msg->mm_Body.Stats.tasksIn, 
+                                        msg->mm_Body.Stats.tasksOut,
+                                        now.tv_secs / 3600,
+                                        (now.tv_secs / 60) % 60,
+                                        now.tv_secs % 60);
+                            }
+                            SetWindowTitles(displayWin, tmpbuf, NULL);
+                            
+                            ReplyMsg(&msg->mm_Message);
+                        }
+                        else if (msg->mm_Type == MSG_DONE)
+                        {
+                            char tmpbuf[128];
+
+                            FreeMem(msg, msg->mm_Message.mn_Length);
+                            GetSysTime(&now);
+                            SubTime(&now, &start_time);
+
+                            _sprintf(tmpbuf, "Buddhabrot finished: %d:%02d:%02d",
+                                    now.tv_secs / 3600,
+                                    (now.tv_secs / 60) % 60,
+                                    now.tv_secs % 60);
+                            SetWindowTitles(displayWin, tmpbuf, NULL);
+
+                            Printf("Rendering time: %ld:%02ld:%02ld\n",
+                                now.tv_secs / 3600, (now.tv_secs / 60) % 60, now.tv_secs % 60);
+                            
+                            renderingDone = TRUE;
+                        }
+                    }
                 }
 
                 if (signals & (1 << displayWin->UserPort->mp_SigBit))
@@ -338,6 +411,13 @@ int main()
                         {
                             case IDCMP_CLOSEWINDOW:
                                 windowClosing = TRUE;
+                                {
+                                    struct MyMessage *m = AllocMem(sizeof(struct MyMessage), MEMF_ANY);
+                                    m->mm_Type = MSG_DIE;
+                                    m->mm_Message.mn_Length = sizeof(struct MyMessage);
+                                    m->mm_Message.mn_ReplyPort = mainPort;
+                                    PutMsg(masterPort, &m->mm_Message);
+                                }
                                 break;
 
                             case IDCMP_REFRESHWINDOW:
@@ -352,8 +432,14 @@ int main()
                     }
                 }
             }
-
         }
+
+#if 0
+        while(threadCnt) {
+            Printf("Waiting for threads to finis: %ld\n", threadCnt);
+            Delay(50);
+        } 
+#endif
 
         CloseWindow(displayWin);
 
