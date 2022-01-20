@@ -132,14 +132,19 @@ void processWork(struct WorkersWork *workload, ULONG *workBuffer, ULONG workWidt
         {
             (void)diff_sr;
 
-            val = workBuffer[current / workload->workOver2];
+            ULONG px = (current % (workWidth * workload->workOversamp)) / workload->workOversamp;
+            ULONG py = current / (workWidth * workload->workOver2);
 
-            val+= 10*trajectoryLength; //(255 * trajectoryLength) / workload->workMax;
+            ULONG pos = px + py * workWidth;
+
+            val = workBuffer[pos];
+
+            val+= 10*trajectoryLength / workload->workOver2;
             
             if (val > 0xfff)
                 val = 0xfff;
 
-            workBuffer[current / workload->workOver2] = val;
+            workBuffer[pos] = val;
         }
     }
 }
