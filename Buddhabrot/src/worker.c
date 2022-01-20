@@ -117,7 +117,6 @@ void processWork(struct MyMessage *msg)
                 ULONG pos;
                 int i;
                 ObtainSemaphore(msg->mm_Body.WorkPackage.writeLock);
-                Forbid();
                 for(i = 0; i < trajectoryCurr; i++)
                 {
                     ULONG py = (workTrajectories[i].r - x_0 + size / 2.0) / diff_sr;

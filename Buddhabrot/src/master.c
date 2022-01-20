@@ -64,8 +64,10 @@ void SMPTestMaster(struct MsgPort *mainPort)
                 continue;
 
             /* In case of reply message discard it */
-            if (cmd->mm_Message.mn_Node.ln_Type == NT_REPLYMSG)
+            if (cmd->mm_Message.mn_Node.ln_Type == NT_REPLYMSG) {
                 FreeMem(cmd, cmd->mm_Message.mn_Length);
+                continue;
+            }
 
             switch(cmd->mm_Type)
             {
