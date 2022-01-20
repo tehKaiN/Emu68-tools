@@ -10,6 +10,8 @@
 #include <clib/exec_protos.h>
 #include <clib/alib_protos.h>
 
+#include <stdlib.h>
+
 #include "work.h"
 #include "support.h"
 
@@ -123,7 +125,10 @@ void SMPTestMaster(struct MsgPort *mainPort)
                         m->mm_Body.WorkPackage.workEnd = msgEnd;
                         m->mm_Body.WorkPackage.redrawTask = redrawTask;
 
-                        AddTail(&workPackages, &m->mm_Message.mn_Node);
+                        m->mm_Message.mn_Node.ln_Pri = rand() & 0xff;
+
+                        Enqueue(&workPackages, &m->mm_Message.mn_Node);                       
+                        
                         tasksIn++;
 
                         msgStart = msgEnd + 1;
