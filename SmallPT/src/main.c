@@ -22,8 +22,6 @@
 
 CONST_STRPTR version = "$VER: SMP-Smallpt 1.0 (03.03.2017) �2017 The AROS Development Team";
 
-APTR KernelBase;
-
 struct Window * createMainWindow(int req_width, int req_height)
 {
     struct Screen *pubScreen;
