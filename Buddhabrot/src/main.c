@@ -56,7 +56,7 @@ struct Window * createMainWindow(int req_size)
                                      WA_InnerWidth, req_size,
                                      WA_InnerHeight, req_size,
                                      WA_Title, (Tag) "Buddhabrot",
-                                     WA_SimpleRefresh, TRUE,
+                                     WA_SmartRefresh, TRUE,
                                      WA_CloseGadget, TRUE,
                                      WA_DepthGadget, TRUE,
                                      WA_DragBar, TRUE,
@@ -92,10 +92,67 @@ enum {
 
 struct TimerBase *TimerBase = NULL;
 
+struct RedrawMessage {
+    struct RenderInfo * rinfo;
+    struct Window *     window;
+    ULONG               width;
+    ULONG               height;
+    struct RastPort *   rport;
+    struct BitMap *     bmap;
+    struct Library *    pbase;
+    ULONG *             workBuffer;
+};
+
+void redrawTaskMain(struct RedrawMessage *rm)
+{
+    struct Library *P96Base = rm->pbase;
+    ULONG sigset;
+
+    p96WritePixelArray(rm->rinfo, 0, 0, rm->window->RPort, rm->window->BorderLeft, rm->window->BorderTop,
+        rm->width, rm->height);
+
+    while((sigset = Wait(SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D)) != 0)
+    {
+        if (sigset & SIGBREAKF_CTRL_D)
+        {
+            ULONG *rgba = rm->rinfo->Memory;
+
+            for (ULONG i = 0; i < rm->width * rm->height; i++)
+            {
+                ULONG rgb = rm->workBuffer[i];
+                ULONG r=96*rgb,g=128*rgb,b=256*rgb;
+
+                b = (b + 255) / 512;
+                r = (r + 255) / 512;
+                g = (g + 255) / 512;
+
+                if (b > 255) b = 255;
+                if (r > 255) r = 255;
+                if (g > 255) g = 255;
+
+                ULONG c = 0xff | (r << 8) | (g << 16) | (b << 24);
+                rgba[i] = c;
+            }
+
+            p96WritePixelArray(rm->rinfo, 0, 0, rm->window->RPort, rm->window->BorderLeft, rm->window->BorderTop,
+                rm->width, rm->height);
+#if 0
+            BltBitMapRastPort (rm->bmap, 0, 0,
+                rm->window->RPort, rm->window->BorderLeft, rm->window->BorderTop,
+                rm->width, rm->height, 0xC0);  
+#endif
+        }
+
+        if (sigset & SIGBREAKF_CTRL_C)
+            break;
+    }
+}
+
 int main()
 {
     struct SignalSemaphore lock;
     struct Task *masterTask = NULL;
+    struct Task *redrawTask = NULL;
     struct MsgPort *masterPort = NULL;
     struct MsgPort *mainPort = NULL;
     struct MyMessage cmd;
@@ -232,10 +289,13 @@ int main()
 
     mainPort = CreateMsgPort();
 
+    SetTaskPri(FindTask(NULL), 5);
+
     masterTask = NewCreateTask( TASKTAG_NAME,       (Tag)"Buddha Master",
-                                TASKTAG_PRI,        3,
+                                TASKTAG_PRI,        2,
                                 TASKTAG_PC,         (Tag)SMPTestMaster,
                                 TASKTAG_ARG1,       (Tag)mainPort,
+                                TASKTAG_STACKSIZE,  65536,
                                 TAG_DONE);
 
     Printf("Waiting for master to wake up\n");
@@ -274,20 +334,38 @@ int main()
 
         if (outputBMap && outBMRastPort && workBuffer && rgba)
         {
+            struct RedrawMessage rm;
             struct RenderInfo ri;
             ri.Memory = rgba;
             ri.BytesPerRow = width * sizeof(ULONG);
-            ri.RGBFormat = RGBFB_R8G8B8A8;
+            ri.RGBFormat = RGBFB_B8G8R8A8;
 
             InitRastPort(outBMRastPort);
             outBMRastPort->BitMap = outputBMap;
 
+            rm.rinfo = &ri;
+            rm.window = displayWin;
+            rm.width = width;
+            rm.height = height;
+            rm.rport = outBMRastPort;
+            rm.bmap = outputBMap;
+            rm.pbase = P96Base;
+            rm.workBuffer = workBuffer;
+
+            redrawTask = NewCreateTask(
+                    TASKTAG_NAME,       (Tag)"Buddha redraw",
+                    TASKTAG_PC,         (Tag)redrawTaskMain,
+                    TASKTAG_PRI,        10,
+                    TASKTAG_ARG1,       (Tag)&rm,
+                    TASKTAG_STACKSIZE,  65536,
+                    TAG_DONE);
+#if 0
             p96WritePixelArray(&ri, 0, 0, outBMRastPort, 0, 0, width, height);
 
             BltBitMapRastPort (outputBMap, 0, 0,
                 displayWin->RPort, displayWin->BorderLeft, displayWin->BorderTop,
                 width, height, 0xC0); 
-
+#endif
             Printf("Sending startup message to master\n");
 
             cmd.mm_Type = MSG_STARTUP;
@@ -322,9 +400,18 @@ int main()
                         /* If we receive our own message, ignore it */
                         if (&cmd == msg)
                             continue;
+                        
+                        if (msg->mm_Message.mn_Node.ln_Type == NT_REPLYMSG)
+                            continue;
 
                         if (msg->mm_Type == MSG_REDRAW)
                         {
+                            static int cnt = 0;
+                            ReplyMsg(&msg->mm_Message);
+                            Printf("Redraw message %ld...\n", ++cnt);
+
+                            Signal(redrawTask, SIGBREAKF_CTRL_D);
+#if 0
                             for (ULONG i = 0; i < width * height; i++)
                             {
                                 ULONG rgb = workBuffer[i];
@@ -338,7 +425,7 @@ int main()
                                 if (r > 255) r = 255;
                                 if (g > 255) g = 255;
 
-                                ULONG c = 0xff | (b << 8) | (g << 16) | (r << 24);
+                                ULONG c = 0xff | (r << 8) | (g << 16) | (b << 24);
                                 rgba[i] = c;
                             }
 
@@ -350,8 +437,7 @@ int main()
                             BltBitMapRastPort (outputBMap, 0, 0,
                                 displayWin->RPort, displayWin->BorderLeft, displayWin->BorderTop,
                                 width, height, 0xC0);
-                            
-                            ReplyMsg(&msg->mm_Message);
+#endif
                         }
                         else if (msg->mm_Type == MSG_STATS)
                         {
@@ -397,6 +483,34 @@ int main()
                             Printf("Rendering time: %ld:%02ld:%02ld\n",
                                 now.tv_secs / 3600, (now.tv_secs / 60) % 60, now.tv_secs % 60);
                             
+                            Signal(redrawTask, SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D);
+#if 0
+                            for (ULONG i = 0; i < width * height; i++)
+                            {
+                                ULONG rgb = workBuffer[i];
+                                ULONG r=96*rgb,g=128*rgb,b=256*rgb;
+
+                                b = (b + 255) / 512;
+                                r = (r + 255) / 512;
+                                g = (g + 255) / 512;
+
+                                if (b > 255) b = 255;
+                                if (r > 255) r = 255;
+                                if (g > 255) g = 255;
+
+                                ULONG c = 0xff | (b << 8) | (g << 16) | (r << 24);
+                                rgba[i] = c;
+                            }
+
+                            p96WritePixelArray(&ri, 0, 0, 
+                                                outBMRastPort,
+                                                0, 0,
+                                                width, height);
+
+                            BltBitMapRastPort (outputBMap, 0, 0,
+                                displayWin->RPort, displayWin->BorderLeft, displayWin->BorderTop,
+                                width, height, 0xC0);
+#endif
                             renderingDone = TRUE;
                         }
                     }
@@ -419,7 +533,7 @@ int main()
                                     PutMsg(masterPort, &m->mm_Message);
                                 }
                                 break;
-
+#if 0
                             case IDCMP_REFRESHWINDOW:
                                 BeginRefresh(msg->IDCMPWindow);
                                 BltBitMapRastPort (outputBMap, 0, 0,
@@ -427,6 +541,7 @@ int main()
                                     width, height, 0xC0);
                                 EndRefresh(msg->IDCMPWindow, TRUE);
                                 break;
+#endif
                         }
                         ReplyMsg((struct Message *)msg);
                     }

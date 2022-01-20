@@ -64,10 +64,12 @@ void processWork(struct MyMessage *msg)
     const ULONG workOver2 = msg->mm_Body.WorkPackage.oversample * msg->mm_Body.WorkPackage.oversample;
     const ULONG workWidth = msg->mm_Body.WorkPackage.width;
     const ULONG workHeight = msg->mm_Body.WorkPackage.height;
+    const ULONG trajectoryCapacity = msg->mm_Body.WorkPackage.maxIterations * 2;
+    ULONG trajectoryCurr = 0;
     
-    double x_0 = msg->mm_Body.WorkPackage.x0;
-    double y_0 = msg->mm_Body.WorkPackage.y0;
-    double size = msg->mm_Body.WorkPackage.size;
+    const double x_0 = msg->mm_Body.WorkPackage.x0;
+    const double y_0 = msg->mm_Body.WorkPackage.y0;
+    const double size = msg->mm_Body.WorkPackage.size;
 
     double x, y;
     double diff = size / ((double)(msg->mm_Body.WorkPackage.width * msg->mm_Body.WorkPackage.oversample));
@@ -78,7 +80,7 @@ void processWork(struct MyMessage *msg)
     
     if (msg->mm_Body.WorkPackage.type == TYPE_BUDDHA)
     {
-        workTrajectories = AllocMem(sizeof(complexno_t) * msg->mm_Body.WorkPackage.maxIterations, MEMF_CLEAR|MEMF_ANY);
+        workTrajectories = AllocMem(trajectoryCapacity * sizeof(complexno_t), MEMF_CLEAR|MEMF_ANY);
     }
 
     for (current = msg->mm_Body.WorkPackage.workStart * workOver2;
@@ -91,21 +93,23 @@ void processWork(struct MyMessage *msg)
         x = x_0 + ((double)(current % (workWidth * msg->mm_Body.WorkPackage.oversample))) * diff - size / 2.0;
         y = y_0 + ((double)(current / (workWidth * msg->mm_Body.WorkPackage.oversample))) * diff - y_base;
 
-        /* Calculate the points trajectory ... */
-        trajectoryLength = calculateTrajectory(workTrajectories, msg->mm_Body.WorkPackage.maxIterations, x, y);
-
         if (msg->mm_Body.WorkPackage.type == TYPE_BUDDHA)
         {
-            /* Update the display if it escapes */
-            if (trajectoryLength > 0)
+            /* Calculate the points trajectory ... */
+            trajectoryLength = calculateTrajectory(&workTrajectories[trajectoryCurr], msg->mm_Body.WorkPackage.maxIterations, x, y);
+            trajectoryCurr += trajectoryLength;
+
+            /* If there is no place for next iteration, flush the trajectory */
+            if (trajectoryCapacity - trajectoryCurr < msg->mm_Body.WorkPackage.maxIterations)
             {
                 ULONG pos;
                 int i;
                 ObtainSemaphore(msg->mm_Body.WorkPackage.writeLock);
-                for(i = 0; i < trajectoryLength; i++)
+                Forbid();
+                for(i = 0; i < trajectoryCurr; i++)
                 {
-                    ULONG py = (workTrajectories[i].r - y_0 + size / 2.0) / diff_sr;
-                    ULONG px = (workTrajectories[i].i - x_0 + y_base) / diff_sr;
+                    ULONG py = (workTrajectories[i].r - x_0 + size / 2.0) / diff_sr;
+                    ULONG px = (workTrajectories[i].i - y_0 + y_base) / diff_sr;
 
                     pos = (ULONG)(workWidth * py + px);
 
@@ -122,10 +126,13 @@ void processWork(struct MyMessage *msg)
                     }
                 }
                 ReleaseSemaphore(msg->mm_Body.WorkPackage.writeLock);
+                trajectoryCurr = 0;
             }
         }
         else
         {
+            trajectoryLength = calculateTrajectory(NULL, msg->mm_Body.WorkPackage.maxIterations, x, y);
+
             (void)diff_sr;
 
             ULONG px = (current % (workWidth * msg->mm_Body.WorkPackage.oversample)) / msg->mm_Body.WorkPackage.oversample;
@@ -144,9 +151,41 @@ void processWork(struct MyMessage *msg)
         }
     }
 
+    /* For buddha type, flush trajectory buffer */
+    if (msg->mm_Body.WorkPackage.type == TYPE_BUDDHA)
+    {
+        if (trajectoryCurr != 0)
+        {
+            ULONG pos;
+            int i;
+            ObtainSemaphore(msg->mm_Body.WorkPackage.writeLock);
+            for(i = 0; i < trajectoryCurr; i++)
+            {
+                ULONG py = (workTrajectories[i].r - y_0 + size / 2.0) / diff_sr;
+                ULONG px = (workTrajectories[i].i - x_0 + y_base) / diff_sr;
+
+                pos = (ULONG)(workWidth * py + px);
+
+                if (pos > 0 && pos < (workWidth * workHeight))
+                {
+
+                    ULONG val = msg->mm_Body.WorkPackage.workBuffer[pos];
+                    
+                    if (val < 0xfff)
+                        val++;
+
+                    msg->mm_Body.WorkPackage.workBuffer[pos] = val;
+
+                }
+            }
+            ReleaseSemaphore(msg->mm_Body.WorkPackage.writeLock);
+            trajectoryCurr = 0;
+        }
+    }
+
     if (workTrajectories)
     {
-        FreeMem(workTrajectories, sizeof(complexno_t) * msg->mm_Body.WorkPackage.maxIterations);
+        FreeMem(workTrajectories, trajectoryCapacity * sizeof(complexno_t));
     }
 }
 

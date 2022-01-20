@@ -87,7 +87,7 @@ void SMPTestMaster(struct MsgPort *mainPort)
                         entire number of pixels of the image and split that across threads.
                         Use subdivide to make the work packages smaller.
                     */
-                    ULONG workPortion = ((width * height) / slaveCount) / subdivide;
+                    ULONG workPortion = (width * height) / subdivide;
                     ULONG msgStart = 0;
                     const ULONG msgStop = width * height;
 
@@ -134,9 +134,10 @@ void SMPTestMaster(struct MsgPort *mainPort)
                         _sprintf(tmpbuf, "Buddha Worker #%d", i);
                         slaves[i] = NewCreateTask(
                                         TASKTAG_NAME,       (Tag)tmpbuf,
-                                        TASKTAG_PRI,        0,
+                                        TASKTAG_PRI,        -1,
                                         TASKTAG_PC,         (Tag)SMPTestWorker,
                                         TASKTAG_ARG1,       (Tag)masterPort,
+                                        TASKTAG_STACKSIZE,  65536,
                                         TAG_DONE);
                     }
 
