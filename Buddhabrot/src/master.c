@@ -24,7 +24,7 @@ void SMPTestMaster(struct MsgPort *mainPort)
     BOOL timeToDie = FALSE;
     struct Task *thisTask = FindTask(NULL);
     struct MsgPort *masterPort = CreateMsgPort();
-    struct MyMessage msg;
+    struct MyMessage *cmd;
     struct Task **slaves;
     struct List workPackages;
 
@@ -48,26 +48,22 @@ void SMPTestMaster(struct MsgPort *mainPort)
 
     NewList(&workPackages);
 
-    msg.mm_Type = -1;
-    msg.mm_Message.mn_Length = sizeof(msg);
-    msg.mm_Message.mn_ReplyPort = masterPort;
+    /* Let main know master is up */
+    cmd = AllocPooled(memPool, sizeof(struct MyMessage));
+    cmd->mm_Type = -1;
+    cmd->mm_Message.mn_Length = sizeof(struct MyMessage);
+    cmd->mm_Message.mn_ReplyPort = masterPort;
 
-    PutMsg(mainPort, &msg.mm_Message);
+    PutMsg(mainPort, &cmd->mm_Message);
 
     do {
-        struct MyMessage *cmd;
-
         WaitPort(masterPort);
         
         while((cmd = (struct MyMessage *)GetMsg(masterPort)) != NULL)
         {
-            /* If we receive our own message, ignore it */
-            if (cmd == &msg)
-                continue;
-
             /* In case of reply message discard it */
             if (cmd->mm_Message.mn_Node.ln_Type == NT_REPLYMSG) {
-                FreeMem(cmd, cmd->mm_Message.mn_Length);
+                FreePooled(memPool, cmd, cmd->mm_Message.mn_Length);
                 continue;
             }
 
@@ -107,7 +103,7 @@ void SMPTestMaster(struct MsgPort *mainPort)
                         if (msgEnd >= msgStop)
                             msgEnd = msgStop - 1;
 
-                        struct MyMessage *m = AllocMem(sizeof(struct MyMessage), MEMF_ANY);
+                        struct MyMessage *m = AllocPooled(memPool, sizeof(struct MyMessage));
                         m->mm_Message.mn_Length = sizeof(struct MyMessage);
                         m->mm_Message.mn_ReplyPort = masterPort;
                         m->mm_Type = MSG_WORKPACKAGE;
@@ -137,7 +133,7 @@ void SMPTestMaster(struct MsgPort *mainPort)
                     /*
                         Create requested number of threads, every of them will send MSG_HUNGRY message
                     */
-                    slaves = AllocMem(slaveCount * sizeof(APTR), MEMF_PUBLIC);
+                    slaves = AllocPooled(memPool, slaveCount * sizeof(APTR));
                     for (int i=0; i < slaveCount; i++)
                     {
                         char tmpbuf[32];
@@ -155,19 +151,26 @@ void SMPTestMaster(struct MsgPort *mainPort)
                     break;
                 
                 case MSG_HUNGRY:
-                    /* Slave is asking for work, as long as we have some, send it */
+                    /* Reply immediately, prepare task later */
+                    ReplyMsg(&cmd->mm_Message);
+
+                    /*  
+                        Slave is asking for work, as long as we have some, send it.
+                        If the list of packages is empty, we don't need the slave anymore.
+                        Send a kiss of death in that case
+                    */
                     if (!IsListEmpty(&workPackages))
                     {
                         struct MyMessage *m = (struct MyMessage *)RemHead(&workPackages);
                         struct MsgPort *p = cmd->mm_Message.mn_ReplyPort;
                         tasksOut++;
                         tasksIn--;
-
+                        
                         PutMsg(p, &m->mm_Message);
                     }
                     else
                     {
-                        struct MyMessage *m = AllocMem(sizeof(struct MyMessage), MEMF_ANY);
+                        struct MyMessage *m = AllocPooled(memPool, sizeof(struct MyMessage));
                         struct MsgPort *p = cmd->mm_Message.mn_ReplyPort;
 
                         m->mm_Type = MSG_DIE;
@@ -175,21 +178,9 @@ void SMPTestMaster(struct MsgPort *mainPort)
                         m->mm_Message.mn_ReplyPort = masterPort;
 
                         PutMsg(p, &m->mm_Message);
-                        if (slaveCount != 0)
-                            slaveCount--;
-
-                        if (slaveCount == 0)
-                        {
-                            m = AllocMem(sizeof(struct MyMessage), MEMF_ANY);
-                            m->mm_Type = MSG_DONE;
-                            m->mm_Message.mn_ReplyPort = masterPort;
-                            m->mm_Message.mn_Length = sizeof(struct MyMessage);
-
-                            PutMsg(mainPort, &m->mm_Message);
-                        }
                     }
                     {
-                        struct MyMessage *m = AllocMem(sizeof(struct MyMessage), MEMF_ANY);
+                        struct MyMessage *m = AllocPooled(memPool, sizeof(struct MyMessage));
                         m->mm_Type = MSG_STATS;
                         m->mm_Message.mn_ReplyPort = masterPort;
                         m->mm_Message.mn_Length = sizeof(struct MyMessage);
@@ -199,10 +190,31 @@ void SMPTestMaster(struct MsgPort *mainPort)
                         PutMsg(mainPort, &m->mm_Message);
                     }
                     break;
+                
+                case MSG_DONE:
+                    /* Slave told that it is goind to die now, accept it, discard message and decrease slave counter */
+                    FreePooled(memPool, cmd, cmd->mm_Message.mn_Length);
+                    
+                    if (slaveCount != 0)
+                        slaveCount--;
+
+                    /*
+                        All slaves are gone. Let main know
+                    */
+                    if (slaveCount == 0)
+                    {
+                        struct MyMessage *m = AllocPooled(memPool, sizeof(struct MyMessage));
+                        m->mm_Type = MSG_DONE;
+                        m->mm_Message.mn_ReplyPort = masterPort;
+                        m->mm_Message.mn_Length = sizeof(struct MyMessage);
+
+                        PutMsg(mainPort, &m->mm_Message);
+                    }
+                    break;
 
                 case MSG_DIE:
                     /* Don't reply DIE message. Free it instead */
-                    FreeMem(cmd, cmd->mm_Message.mn_Length);
+                    FreePooled(memPool, cmd, cmd->mm_Message.mn_Length);
                     
                     /* Purge remaining tasks */
                     if (!IsListEmpty(&workPackages))
@@ -210,17 +222,20 @@ void SMPTestMaster(struct MsgPort *mainPort)
                         struct MyMessage *m;
                         while ((m = (struct MyMessage *)RemHead(&workPackages)) != NULL)
                         {
-                            FreeMem(m, m->mm_Message.mn_Length);
+                            FreePooled(memPool, m, m->mm_Message.mn_Length);
                         }
                     }
                     timeToDie = TRUE;
                     break;
             }
         }
-    } while(!(timeToDie && slaveCount == 0));
+    } while(!timeToDie || slaveCount != 0);
 
     DeleteMsgPort(masterPort);
 
     if (slaves)
-        FreeMem(slaves, slaveCount * sizeof(APTR));
+        FreePooled(memPool, slaves, slaveCount * sizeof(APTR));
+    
+    Disable();
+    threadCnt--;
 }

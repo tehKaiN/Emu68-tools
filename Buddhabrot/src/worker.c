@@ -12,8 +12,6 @@
 #include "work.h"
 #include "support.h"
 
-#define DWORK(x)
-
 /*
  * define a complex number with
  * real and imaginary parts
@@ -54,6 +52,7 @@ ULONG calculateTrajectory(complexno_t *workTrajectories, ULONG workMax, double r
         }
     }
 
+    /* It didn't managed to escape, return null path */
     return 0;
 }
 
@@ -64,12 +63,8 @@ void processWork(struct MyMessage *msg)
     const ULONG workOver2 = msg->mm_Body.WorkPackage.oversample * msg->mm_Body.WorkPackage.oversample;
     const ULONG workWidth = msg->mm_Body.WorkPackage.width;
     const ULONG workHeight = msg->mm_Body.WorkPackage.height;
-    const ULONG trajectoryCapacity = msg->mm_Body.WorkPackage.maxIterations * 2;
+    const ULONG trajectoryCapacity = msg->mm_Body.WorkPackage.maxIterations * 3 / 2;
     ULONG trajectoryCurr = 0;
-#if 0
-    const ULONG maxLength = 1000;
-    ULONG currLength = 0;
-#endif
 
     const double x_0 = msg->mm_Body.WorkPackage.x0;
     const double y_0 = msg->mm_Body.WorkPackage.y0;
@@ -84,7 +79,7 @@ void processWork(struct MyMessage *msg)
     
     if (msg->mm_Body.WorkPackage.type == TYPE_BUDDHA)
     {
-        workTrajectories = AllocMem(trajectoryCapacity * sizeof(complexno_t), MEMF_CLEAR|MEMF_ANY);
+        workTrajectories = AllocPooled(memPool, trajectoryCapacity * sizeof(complexno_t));
     }
 
     for (current = msg->mm_Body.WorkPackage.workStart * workOver2;
@@ -102,15 +97,7 @@ void processWork(struct MyMessage *msg)
             /* Calculate the points trajectory ... */
             trajectoryLength = calculateTrajectory(&workTrajectories[trajectoryCurr], msg->mm_Body.WorkPackage.maxIterations, x, y);
             trajectoryCurr += trajectoryLength;
-#if 0
-            currLength += trajectoryLength;
 
-            if (currLength >= maxLength)
-            {
-                currLength = 0;
-                Signal(msg->mm_Body.WorkPackage.redrawTask, SIGBREAKF_CTRL_D);
-            }
-#endif
             /* If there is no place for next iteration, flush the trajectory */
             if (trajectoryCapacity - trajectoryCurr < msg->mm_Body.WorkPackage.maxIterations)
             {
@@ -201,7 +188,7 @@ void processWork(struct MyMessage *msg)
 
     if (workTrajectories)
     {
-        FreeMem(workTrajectories, trajectoryCapacity * sizeof(complexno_t));
+        FreePooled(memPool, workTrajectories, trajectoryCapacity * sizeof(complexno_t));
     }
 }
 
@@ -212,49 +199,60 @@ void SMPTestWorker(struct MsgPort *masterPort)
 {
     struct Task *thisTask = FindTask(NULL);
     struct MsgPort *port = CreateMsgPort();
-    struct MyMessage cmd;
+    struct MyMessage *cmd = AllocPooled(memPool, sizeof(struct MyMessage));
 
     Disable();
     threadCnt++;
     Enable();
 
-    cmd.mm_Message.mn_Length = sizeof(cmd);
-    cmd.mm_Message.mn_ReplyPort = port;
-
     if (port)
     {
         BOOL done = FALSE;
 
-        cmd.mm_Type = MSG_HUNGRY;
-        PutMsg(masterPort, &cmd.mm_Message);
+        cmd->mm_Message.mn_Length = sizeof(struct MyMessage);
+        cmd->mm_Message.mn_ReplyPort = port;
+        cmd->mm_Type = MSG_HUNGRY;
+        PutMsg(masterPort, &cmd->mm_Message);
 
         while(!done)
         {
-            struct MyMessage *msg;
-
             WaitPort(port);
-            while((msg = (struct MyMessage *)GetMsg(port)) != NULL)
-            {
-                /* If we receive our own message, ignore it */
-                if (&cmd == msg)
-                    continue;
-                
-                /* Ignore reply messages */
-                if (msg->mm_Message.mn_Node.ln_Type == NT_REPLYMSG)
-                    continue;
-
-                if (msg->mm_Type == MSG_WORKPACKAGE)
+            while((cmd = (struct MyMessage *)GetMsg(port)) != NULL)
+            {               
+                /* Discard reply messages */
+                if (cmd->mm_Message.mn_Node.ln_Type == NT_REPLYMSG)
                 {
-                    processWork(msg);
-                    ReplyMsg(&msg->mm_Message);
-                    cmd.mm_Type = MSG_HUNGRY;
-                    PutMsg(masterPort, &cmd.mm_Message);
+                    FreePooled(memPool, cmd, sizeof(struct MyMessage));
+                    continue;
                 }
-                else if (msg->mm_Type == MSG_DIE)
+
+                switch (cmd->mm_Type)
                 {
-                    Forbid();
-                    done = TRUE;
-                    FreeMem(msg, msg->mm_Message.mn_Length);
+                    case MSG_WORKPACKAGE:
+                        processWork(cmd);
+                        ReplyMsg(&cmd->mm_Message);
+
+                        cmd = AllocPooled(memPool, sizeof(struct MyMessage));
+                        cmd->mm_Message.mn_Length = sizeof(struct MyMessage);
+                        cmd->mm_Message.mn_ReplyPort = port;
+                        cmd->mm_Type = MSG_HUNGRY;
+                        PutMsg(masterPort, &cmd->mm_Message);
+                        break;
+
+                    case MSG_DIE:
+                        ReplyMsg(&cmd->mm_Message);
+
+                        /* Let master know slave is accepting the fate */
+                        cmd = AllocPooled(memPool, sizeof(struct MyMessage));
+                        cmd->mm_Message.mn_Length = sizeof(struct MyMessage);
+                        cmd->mm_Message.mn_ReplyPort = port;
+                        cmd->mm_Type = MSG_DONE;
+                        PutMsg(masterPort, &cmd->mm_Message);
+                        break;
+                    
+                    default:
+                        ReplyMsg(&cmd->mm_Message);
+                        break;
                 }
             }
         }
@@ -264,8 +262,17 @@ void SMPTestWorker(struct MsgPort *masterPort)
     if (port)
     {
         struct MyMessage *msg;
-        while ((msg = (struct MyMessage *)GetMsg(port)) != NULL);
+        while ((msg = (struct MyMessage *)GetMsg(port)) != NULL) {
+            FreePooled(memPool, cmd, cmd->mm_Message.mn_Length);
+        }
+
+        DeleteMsgPort(port);
     }
 
-    DeleteMsgPort(port);
+    /*
+        Decrease thread counter in disabled state to make sure the slave is really gone
+        when others attempt to read the counter
+    */
+    Disable();
+    threadCnt--;
 }

@@ -32,5 +32,6 @@ for                                                    \
 )
 
 extern ULONG threadCnt;
+extern APTR memPool;
 
 #endif /* _SUPPORT_H */

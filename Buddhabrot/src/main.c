@@ -152,6 +152,8 @@ void redrawTaskMain(struct RedrawMessage *rm)
     }
 }
 
+APTR memPool;
+
 int main()
 {
     struct SignalSemaphore lock;
@@ -159,7 +161,7 @@ int main()
     struct Task *redrawTask = NULL;
     struct MsgPort *masterPort = NULL;
     struct MsgPort *mainPort = NULL;
-    struct MyMessage cmd;
+    struct MyMessage *cmd;
 
     struct RDArgs *rda;
     struct Library *P96Base;
@@ -178,6 +180,7 @@ int main()
     double size = 4.0;
 
     InitSemaphore(&lock);
+    memPool = CreatePool(MEMF_ANY | MEMF_CLEAR, 8192, 4096);
 
     struct MsgPort *timerPort = CreateMsgPort();
     struct timerequest *tr = CreateIORequest(timerPort, sizeof(struct timerequest));
@@ -292,10 +295,8 @@ int main()
 
     Printf("Waiting for master to wake up\n");
 
-    WaitPort(mainPort);
-    struct Message *msg = GetMsg(mainPort);
+    struct Message *msg = WaitPort(mainPort);
     masterPort = msg->mn_ReplyPort;
-    ReplyMsg(msg);
 
     Printf("Master alive\n");
 
@@ -314,10 +315,12 @@ int main()
         height = (displayWin->Height - displayWin->BorderTop - displayWin->BorderBottom);
 
         if (subdivide == 0)
-            subdivide = width / 16;
+            subdivide = width * width / 5000;
+        if (subdivide == 0)
+            subdivide = 1;
 
-        workBuffer = AllocMem(width * height * sizeof(ULONG), MEMF_ANY | MEMF_CLEAR);
-        rgba = AllocMem(width * height * sizeof(ULONG), MEMF_ANY | MEMF_CLEAR);
+        workBuffer = AllocPooled(memPool, width * height * sizeof(ULONG));
+        rgba = AllocPooled(memPool, width * height * sizeof(ULONG));
 
         if (workBuffer && rgba)
         {
@@ -344,24 +347,25 @@ int main()
 
             Printf("Sending startup message to master\n");
 
-            cmd.mm_Type = MSG_STARTUP;
-            cmd.mm_Message.mn_ReplyPort = mainPort;
-            cmd.mm_Message.mn_Length = sizeof(cmd);
-            cmd.mm_Body.Startup.width = width;
-            cmd.mm_Body.Startup.height = height;
-            cmd.mm_Body.Startup.threadCount = coreCount;
-            cmd.mm_Body.Startup.subdivide = subdivide;
-            cmd.mm_Body.Startup.maxIterations = maxWork;
-            cmd.mm_Body.Startup.oversample = oversample;
-            cmd.mm_Body.Startup.type = type;
-            cmd.mm_Body.Startup.x0 = x0;
-            cmd.mm_Body.Startup.y0 = y0;
-            cmd.mm_Body.Startup.size = size;
-            cmd.mm_Body.Startup.workBuffer = workBuffer;
-            cmd.mm_Body.Startup.writeLock = &lock;
-            cmd.mm_Body.Startup.redrawTask = redrawTask;
+            cmd = AllocPooled(memPool, sizeof(struct MyMessage));
+            cmd->mm_Type = MSG_STARTUP;
+            cmd->mm_Message.mn_ReplyPort = mainPort;
+            cmd->mm_Message.mn_Length = sizeof(struct MyMessage);
+            cmd->mm_Body.Startup.width = width;
+            cmd->mm_Body.Startup.height = height;
+            cmd->mm_Body.Startup.threadCount = coreCount;
+            cmd->mm_Body.Startup.subdivide = subdivide;
+            cmd->mm_Body.Startup.maxIterations = maxWork;
+            cmd->mm_Body.Startup.oversample = oversample;
+            cmd->mm_Body.Startup.type = type;
+            cmd->mm_Body.Startup.x0 = x0;
+            cmd->mm_Body.Startup.y0 = y0;
+            cmd->mm_Body.Startup.size = size;
+            cmd->mm_Body.Startup.workBuffer = workBuffer;
+            cmd->mm_Body.Startup.writeLock = &lock;
+            cmd->mm_Body.Startup.redrawTask = redrawTask;
 
-            PutMsg(masterPort, &cmd.mm_Message);
+            PutMsg(masterPort, &cmd->mm_Message);
             WaitPort(mainPort);
             GetMsg(mainPort);
 
@@ -372,17 +376,16 @@ int main()
             {
                 if (signals & (1 << mainPort->mp_SigBit))
                 {
-                    struct MyMessage *msg;
-                    while ((msg = (struct MyMessage *)GetMsg(mainPort)))
-                    {
-                        /* If we receive our own message, ignore it */
-                        if (&cmd == msg)
+                    while ((cmd = (struct MyMessage *)GetMsg(mainPort)))
+                    {                      
+                        /* Reply message, discard and continue */
+                        if (cmd->mm_Message.mn_Node.ln_Type == NT_REPLYMSG)
+                        {
+                            FreePooled(memPool, cmd, cmd->mm_Message.mn_Length);
                             continue;
-                        
-                        if (msg->mm_Message.mn_Node.ln_Type == NT_REPLYMSG)
-                            continue;
+                        }
 
-                        else if (msg->mm_Type == MSG_STATS)
+                        if (cmd->mm_Type == MSG_STATS)
                         {
                             char tmpbuf[128];
 
@@ -398,22 +401,22 @@ int main()
                             else
                             {
                                 _sprintf(tmpbuf, "Buddhabrot; %d threads; Packages: %d in, %d out; %d:%02d:%02d",
-                                        msg->mm_Body.Stats.tasksWork, 
-                                        msg->mm_Body.Stats.tasksIn, 
-                                        msg->mm_Body.Stats.tasksOut,
+                                        cmd->mm_Body.Stats.tasksWork, 
+                                        cmd->mm_Body.Stats.tasksIn, 
+                                        cmd->mm_Body.Stats.tasksOut,
                                         now.tv_secs / 3600,
                                         (now.tv_secs / 60) % 60,
                                         now.tv_secs % 60);
                             }
                             SetWindowTitles(displayWin, tmpbuf, NULL);
                             
-                            ReplyMsg(&msg->mm_Message);
+                            ReplyMsg(&cmd->mm_Message);
                         }
-                        else if (msg->mm_Type == MSG_DONE)
+                        else if (cmd->mm_Type == MSG_DONE)
                         {
                             char tmpbuf[128];
 
-                            FreeMem(msg, msg->mm_Message.mn_Length);
+                            FreePooled(memPool, msg, cmd->mm_Message.mn_Length);
                             GetSysTime(&now);
                             SubTime(&now, &start_time);
 
@@ -429,6 +432,7 @@ int main()
                             Signal(redrawTask, SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D);
                             redrawTask = NULL;
                             renderingDone = TRUE;
+                            masterPort = NULL;
                         }
                     }
                 }
@@ -441,19 +445,20 @@ int main()
                         switch(msg->Class)
                         {
                             case IDCMP_CLOSEWINDOW:
-                                windowClosing = TRUE;
+                                if (windowClosing == FALSE && masterPort != NULL)
                                 {
-                                    struct MyMessage *m = AllocMem(sizeof(struct MyMessage), MEMF_ANY);
+                                    struct MyMessage *m = AllocPooled(memPool, sizeof(struct MyMessage));
                                     m->mm_Type = MSG_DIE;
                                     m->mm_Message.mn_Length = sizeof(struct MyMessage);
                                     m->mm_Message.mn_ReplyPort = mainPort;
                                     PutMsg(masterPort, &m->mm_Message);
                                 }
+                                windowClosing = TRUE;
                                 break;
                             case IDCMP_INTUITICKS:
                                 GetSysTime(&now);
                                 SubTime(&now, &last_redraw);
-                                if (now.tv_secs >= 1) {
+                                if (now.tv_secs >= 5) {
                                     GetSysTime(&last_redraw);
                                     if (redrawTask)
                                         Signal(redrawTask, SIGBREAKF_CTRL_D);
@@ -469,13 +474,15 @@ int main()
         CloseWindow(displayWin);
 
         if (workBuffer)
-            FreeMem(workBuffer, sizeof(ULONG) * width * height);
+            FreePooled(memPool, workBuffer, sizeof(ULONG) * width * height);
         if (rgba)
-            FreeMem(rgba, sizeof(ULONG) * width * height);
+            FreePooled(memPool, rgba, sizeof(ULONG) * width * height);
     }
 
     DeleteMsgPort(mainPort);
     CloseLibrary(P96Base);
+
+    DeletePool(memPool);
 
     return 0;
 }
