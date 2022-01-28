@@ -73,7 +73,7 @@ SECTIONS
         _code_start = .;
 
         /* Everything from main.c will be copied to ram together with DiagArea */
-        *main.c.o(.text .text.* .rodata .rodata.*)
+        *main*(.text .text.* .rodata .rodata.*)
 
         _ramcopy_end = .;
 
