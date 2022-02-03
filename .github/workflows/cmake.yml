@@ -13,7 +13,8 @@ jobs:
     # cross-platform coverage.
     # See: https://docs.github.com/en/actions/configuring-and-managing-workflows/configuring-a-workflow#configuring-a-build-matrix
     runs-on: ubuntu-latest
-    container: amigadev/crosstools:m68k-amigaos
+    container:
+      image: amigadev/crosstools:m68k-amigaos
 
     steps:
     - uses: actions/checkout@v2
