@@ -12,3 +12,5 @@ add_executable(emu68-vc4.card
     src/end.c
 )
 target_link_libraries(emu68-vc4.card devicetree)
+
+install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/emu68-vc4.card DESTINATION ./Emu68-VC4/)

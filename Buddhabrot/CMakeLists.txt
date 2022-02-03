@@ -15,3 +15,5 @@ add_executable(Buddhabrot
 
 set_target_properties(Buddhabrot PROPERTIES LINKER_LANGUAGE C)
 target_link_libraries(Buddhabrot amiga m)
+
+install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/Buddhabrot DESTINATION ./Buddhabrot/)
