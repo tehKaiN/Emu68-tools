@@ -27,6 +27,9 @@ jobs:
       run: |
         cmake -E make_directory ${{runner.workspace}}/build
         cmake -E make_directory ${{runner.workspace}}/install
+    - name: Patch includes
+      shell: bash
+      run: wget https://raw.githubusercontent.com/aros-development-team/AROS/master/compiler/include/devices/newstyle.h -O newstyle.h && wget https://dl.amigadev.com/newstyle.diff -O newstyle.diff && patch --ignore-whitespace < newstyle.diff && mv -fv newstyle.h /opt/m68k-amigaos/m68k-amigaos/ndk-include/devices/
 
     - name: Configure CMake
       # Use a bash shell so we can use the same syntax for environment variable
@@ -35,7 +38,7 @@ jobs:
       # Note the current convention is to use the -S and -B options here to specify source 
       # and build directories, but this is only available with CMake 3.13 and higher.  
       # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
-      run: cmake -B${{runner.workspace}}/build -S$GITHUB_WORKSPACE -DM68K_CPU=68040 -DM68K_FPU=hard -DM68K_CRT=nix20 -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DCMAKE_INSTALL_PREFIX=${{runner.workspace}}/install
+      run: cmake -B${{runner.workspace}}/build -S$GITHUB_WORKSPACE -DM68K_CPU=68040 -DM68K_FPU=hard -DM68K_CRT=nix20 -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DCMAKE_INSTALL_PREFIX:PATH=${{runner.workspace}}/install
 
     - name: Build
       shell: bash
@@ -51,7 +54,7 @@ jobs:
     - name: Install
       shell: bash
       # Create ARIX directory structure and generate initrd file
-      run: cmake --install ${{runner.workspace}}/build
+      run: cmake --build ${{runner.workspace}}/build --config $BUILD_TYPE --target install
 
     - name: Archive
       shell: bash
