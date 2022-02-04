@@ -60,11 +60,16 @@ jobs:
       shell: bash
       run: cd ${{runner.workspace}}/install && zip -r ./Emu68-tools.zip . 
 
+    - name: Move archive
+      shell: bash
+      working-directory: ${{runner.workspace}}/
+      run: mv -fv ${{runner.workspace}}/install/Emu68-tools.zip . 
+
     - name: Upload Artifact
       uses: actions/upload-artifact@v2
       with:
         name: emu68-archive
-        path: ${{runner.workspace}}/install/Emu68-tools.zip
+        path: ${{runner.workspace}}/Emu68-tools.zip
         retention-days: 5
 
   deploy:
