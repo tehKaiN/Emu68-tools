@@ -281,6 +281,73 @@ int _strcmp(const char *s1, const char *s2)
     return (*(const unsigned char *)s1 - *(const unsigned char *)(s2 - 1));
 }
 
+static int mitchell_netravali(double x, double b, double c)
+{
+    double k;
+
+    if (x < 0)
+        x = -x;
+    
+    if (x < 1) {
+        k = (12.0 - 9.0 * b - 6.0 * c) * x * x * x + (-18.0 + 12.0 * b + 6.0 * c) * x * x + (6.0 - 2.0 * b);
+    }
+    else if (x < 2) {
+        k = (-b - 6.0 * c) * x * x * x + (6.0 * b + 30.0 * c) * x * x + (-12.0 * b - 48.0 * c) * x + 8.0 * b + 24.0 * c;
+    }
+    else
+        k = 0;
+    
+    k = 255.0 * k / 6.0 + 0.5;
+
+    return (int)k;
+}
+
+static void compute_scaling_kernel(uint32_t *dlist_memory, double b, double c)
+{
+    uint32_t half_kernel[6] = {0, 0, 0, 0, 0, 0};
+    int kernel_start = 0xff0;
+
+    for (int i=0; i < 16; i++) {
+        int val = mitchell_netravali(2.0 - (double)i / 7.5, b, c);
+        LONG args[] = {
+            i, val
+        };
+        half_kernel[i / 3] |= (val & 0x1ff) << (9 * (i % 3));
+    }
+    half_kernel[5] |= half_kernel[5] << 9;
+
+    for (int i=0; i<11; i++) {
+        if (i < 6) {
+            dlist_memory[kernel_start + i] = LE32(half_kernel[i]);
+        } else {
+            dlist_memory[kernel_start + i] = LE32(half_kernel[11 - i - 1]);
+        }
+    }
+}
+
+static void compute_nearest_neighbour_kernel(uint32_t *dlist_memory)
+{
+    uint32_t half_kernel[6] = {0, 0, 0, 0, 0, 0};
+    int kernel_start = 0xff0;
+
+    for (int i=0; i < 16; i++) {
+        int val = i < 8 ? 0 : 255;
+        LONG args[] = {
+            i, val
+        };
+        half_kernel[i / 3] |= (val & 0x1ff) << (9 * (i % 3));
+    }
+    half_kernel[5] |= half_kernel[5] << 9;
+
+    for (int i=0; i<11; i++) {
+        if (i < 6) {
+            dlist_memory[kernel_start + i] = LE32(half_kernel[i]);
+        } else {
+            dlist_memory[kernel_start + i] = LE32(half_kernel[11 - i - 1]);
+        }
+    }
+}
+
 static int InitCard(struct BoardInfo* bi asm("a0"), const char **ToolTypes asm("a1"), struct VC4Base *VC4Base asm("a6"))
 {
     struct ExecBase *SysBase = VC4Base->vc4_SysBase;
@@ -372,6 +439,7 @@ static int InitCard(struct BoardInfo* bi asm("a0"), const char **ToolTypes asm("
 
     VC4Base->vc4_Phase = 128;
     VC4Base->vc4_Scaler = 0xc0000000;
+    int kernel = 1;
 
     for (;ToolTypes[0] != NULL; ToolTypes++)
     {
@@ -432,7 +500,61 @@ static int InitCard(struct BoardInfo* bi asm("a0"), const char **ToolTypes asm("
             args[0] = VC4Base->vc4_Scaler;
             RawDoFmt("[vc4] Setting VC4 scaler to %lx\n", args, (APTR)putch, NULL);
         }
+        else if (_strcmp(tt, "VC4_KERNEL") == '=')
+        {
+            const char *c = &tt[11];
+            ULONG num = 0;
+
+            while (*c) {
+                if (*c < '0' || *c > '9')
+                    break;
+                
+                num = num * 10 + (*c++ - '0');
+            }
+
+            if (num == 0)
+                kernel = 0;
+            else
+                kernel = 1;
+        }
+        else if (_strcmp(tt, "VC4_KERNEL_B") == '=')
+        {
+            const char *c = &tt[13];
+            ULONG num = 0;
+
+            while (*c) {
+                if (*c < '0' || *c > '9')
+                    break;
+                
+                num = num * 10 + (*c++ - '0');
+            }
+
+            VC4Base->vc4_Kernel_B = (double)num / 1000.0;
+            args[0] = num;
+            RawDoFmt("[vc4] Mitchel-Netravali B %ld\n", args, (APTR)putch, NULL);
+        }
+        else if (_strcmp(tt, "VC4_KERNEL_C") == '=')
+        {
+            const char *c = &tt[13];
+            ULONG num = 0;
+
+            while (*c) {
+                if (*c < '0' || *c > '9')
+                    break;
+                
+                num = num * 10 + (*c++ - '0');
+            }
+
+            VC4Base->vc4_Kernel_C = (double)num / 1000.0;
+            args[0] = num;
+            RawDoFmt("[vc4] Mitchel-Netravali C %ld\n", args, (APTR)putch, NULL);
+        }
     }
+
+    if (kernel)
+        compute_scaling_kernel((uint32_t *)0xf2402000, VC4Base->vc4_Kernel_B, VC4Base->vc4_Kernel_C);
+    else
+        compute_nearest_neighbour_kernel((uint32_t *)0xf2402000);
 
     // Additional functions for "blitter" acceleration and vblank handling
     //bi->SetInterrupt = (void *)NULL;
@@ -840,37 +962,48 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
         }
         else 
         {
-            pos = AllocSlot(16, VC4Base);
+            pos = AllocSlot(18, VC4Base);
+            int cnt = pos + 1;
 
-            displist[pos + 1] = LE32(POS0_X(offset_x) | POS0_Y(offset_y) | POS0_ALPHA(0xff));
-            displist[pos + 2] = LE32(POS1_H(calc_height) | POS1_W(calc_width));
-            displist[pos + 3] = LE32(POS2_H(b->ModeInfo->Height) | POS2_W(b->ModeInfo->Width) | (SCALER_POS2_ALPHA_MODE_FIXED << SCALER_POS2_ALPHA_MODE_SHIFT));
+            displist[cnt++] = LE32(POS0_X(offset_x) | POS0_Y(offset_y) | POS0_ALPHA(0xff));
+            displist[cnt++] = LE32(POS1_H(calc_height) | POS1_W(calc_width));
+            displist[cnt++] = LE32(POS2_H(b->ModeInfo->Height) | POS2_W(b->ModeInfo->Width) | (SCALER_POS2_ALPHA_MODE_FIXED << SCALER_POS2_ALPHA_MODE_SHIFT));
+            displist[cnt++] = LE32(0xdeadbeef); // Scratch written by HVS
 
-            displist[pos + 4] = LE32(0xdeadbeef);
-            displist[pos + 5] = LE32(0xc0000000 | (ULONG)addr + y_offset * bytes_per_row + x_offset * bytes_per_pix);
-            displist[pos + 6] = LE32(0xdeadbeef);
+            displist[cnt++] = LE32(0xc0000000 | (ULONG)addr + y_offset * bytes_per_row + x_offset * bytes_per_pix);
+            displist[cnt++] = LE32(0xdeadbeef); // Scratch written by HVS
 
-            displist[pos + 7] = LE32(bytes_per_row);
+            // Write pitch
+            displist[cnt++] = LE32(bytes_per_row);
 
-            displist[pos + 8] = LE32(0xc0000000 | (0x300 << 2));
+            // Palette mode - offset of palette placed in dlist
+            if (format == RGBFB_CLUT) {
+                displist[cnt++] = LE32(0xc0000000 | (0x300 << 2));
+            }
 
-            displist[pos + 9] = LE32(0);
-            displist[pos + 10] = LE32((scale << 8) | VC4Base->vc4_Scaler | VC4Base->vc4_Phase);
+            // LMB address
+            displist[cnt++] = LE32(0);
+
+            // Write PPF Scaling
+            displist[cnt++] = LE32((scale << 8) | VC4Base->vc4_Scaler | VC4Base->vc4_Phase);
             if (b->ModeInfo->Flags & GMF_DOUBLESCAN)
-                displist[pos + 11] = LE32(((scale << 7) & ~0xff) | VC4Base->vc4_Scaler | VC4Base->vc4_Phase);
+                displist[cnt++] = LE32(((scale << 7) & ~0xff) | VC4Base->vc4_Scaler | VC4Base->vc4_Phase);
             else
-                displist[pos + 11] = LE32((scale << 8) | VC4Base->vc4_Scaler | VC4Base->vc4_Phase);
-            displist[pos + 12] = LE32(0);
+                displist[cnt++] = LE32((scale << 8) | VC4Base->vc4_Scaler | VC4Base->vc4_Phase);
+            displist[cnt++] = LE32(0); // Scratch written by HVS
 
-            displist[pos + 13] = LE32(0xff4);
-            displist[pos + 14] = LE32(0xff4);
+            // Write scaling kernel offset in dlist
+            displist[cnt++] = LE32(0xff0);
+            displist[cnt++] = LE32(0xff0);
+            displist[cnt++] = LE32(0xff0);
+            displist[cnt++] = LE32(0xff0);
 
-            displist[pos + 15] = LE32(0x80000000);
+            displist[cnt++] = LE32(0x80000000);
 
-            displist[pos + 0] = LE32(
-                CONTROL_VALID           |
-                CONTROL_WORDS(15)       |
-                (format == RGBFB_CLUT ? 0x01800 : 0x00400800) |
+            displist[pos] = LE32(
+                CONTROL_VALID               |
+                CONTROL_WORDS(cnt-pos-1)    |
+                0x01800 | 
                 mode_table[format]
             );
         }

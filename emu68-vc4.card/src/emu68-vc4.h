@@ -53,6 +53,8 @@ struct VC4Base {
     ULONG                   vc4_Scaler;
     UBYTE                   vc4_Phase;
     ULONG                   vc4_VertFreq;
+    double                  vc4_Kernel_B;
+    double                  vc4_Kernel_C;
 
     struct {
         APTR        lp_Addr;
