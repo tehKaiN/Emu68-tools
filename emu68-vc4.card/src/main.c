@@ -303,14 +303,13 @@ static int mitchell_netravali(double x, double b, double c)
     return (int)k;
 }
 
+static int unity_kernel = 0xfd0;
 static int kernel_start = 0xff0;
 
 static int compute_scaling_kernel(uint32_t *dlist_memory, double b, double c)
 {
     struct ExecBase *SysBase = *(struct ExecBase **)4;
     uint32_t half_kernel[6] = {0, 0, 0, 0, 0, 0};
-    
-    kernel_start ^= 0x10;
 
     for (int i=0; i < 16; i++) {
         int val = mitchell_netravali(2.0 - (double)i / 7.5, b, c);
@@ -339,8 +338,6 @@ static int compute_nearest_neighbour_kernel(uint32_t *dlist_memory)
 {
     struct ExecBase *SysBase = *(struct ExecBase **)4;
     uint32_t half_kernel[6] = {0, 0, 0, 0, 0, 0};
-    
-    kernel_start ^= 0x10;
 
     for (int i=0; i < 16; i++) {
         int val = i < 8 ? 0 : 255;
@@ -393,6 +390,7 @@ static void vc4_Task()
 
                     switch (vmsg->cmd) {
                         case VCMD_SET_KERNEL:
+                            kernel_start ^= 0x10;
                             if (vmsg->SetKernel.kernel) {
                                 compute_scaling_kernel((uint32_t *)0xf2402000, vmsg->SetKernel.b, vmsg->SetKernel.c);
                             }
@@ -483,7 +481,7 @@ static int InitCard(struct BoardInfo* bi asm("a0"), const char **ToolTypes asm("
     bi->PaletteChipType = PCT_S3ViRGE;
     bi->GraphicsControllerType = GCT_S3ViRGE;
 
-    bi->Flags |= BIF_GRANTDIRECTACCESS | BIF_FLICKERFIXER;// | BIF_HARDWARESPRITE;// | BIF_BLITTER;
+    bi->Flags |= BIF_GRANTDIRECTACCESS | BIF_FLICKERFIXER | BIF_HARDWARESPRITE; // | BIF_BLITTER;
     bi->RGBFormats = 
         RGBFF_TRUEALPHA | 
         RGBFF_TRUECOLOR | 
@@ -564,6 +562,7 @@ static int InitCard(struct BoardInfo* bi asm("a0"), const char **ToolTypes asm("
     VC4Base->vc4_Phase = 128;
     VC4Base->vc4_Scaler = 0xc0000000;
     VC4Base->vc4_UseKernel = 1;
+    VC4Base->vc4_SpriteAlpha = 255;
 
     for (;ToolTypes[0] != NULL; ToolTypes++)
     {
@@ -657,6 +656,24 @@ static int InitCard(struct BoardInfo* bi asm("a0"), const char **ToolTypes asm("
             args[0] = num;
             RawDoFmt("[vc4] Mitchel-Netravali B %ld\n", args, (APTR)putch, NULL);
         }
+        else if (_strcmp(tt, "VC4_SPRITE_OPACITY") == '=')
+        {
+            const char *c = &tt[19];
+            ULONG num = 0;
+
+            while (*c) {
+                if (*c < '0' || *c > '9')
+                    break;
+                
+                num = num * 10 + (*c++ - '0');
+            }
+
+            if (num > 255) num=255;
+
+            VC4Base->vc4_SpriteAlpha = num;
+            args[0] = num;
+            RawDoFmt("[vc4] Sprite opacity set to %ld\n", args, (APTR)putch, NULL);
+        }
         else if (_strcmp(tt, "VC4_KERNEL_C") == '=')
         {
             const char *c = &tt[13];
@@ -679,6 +696,8 @@ static int InitCard(struct BoardInfo* bi asm("a0"), const char **ToolTypes asm("
         compute_scaling_kernel((uint32_t *)0xf2402000, VC4Base->vc4_Kernel_B, VC4Base->vc4_Kernel_C);
     else
         compute_nearest_neighbour_kernel((uint32_t *)0xf2402000);
+
+    compute_nearest_neighbour_kernel(((uint32_t *)0xf2402000) - kernel_start + unity_kernel);
 
     // Additional functions for "blitter" acceleration and vblank handling
     //bi->SetInterrupt = (void *)NULL;
@@ -713,10 +732,10 @@ static int InitCard(struct BoardInfo* bi asm("a0"), const char **ToolTypes asm("
     //bi->FreeBitMap = (void *)NULL;
     //bi->GetBitMapAttr = (void *)NULL;
 
-    //bi->SetSprite = (void *)SetSprite;
-    //bi->SetSpritePosition = (void *)SetSpritePosition;
-    //bi->SetSpriteImage = (void *)SetSpriteImage;
-    //bi->SetSpriteColor = (void *)SetSpriteColor;
+    bi->SetSprite = (void *)SetSprite;
+    bi->SetSpritePosition = (void *)SetSpritePosition;
+    bi->SetSpriteImage = (void *)SetSpriteImage;
+    bi->SetSpriteColor = (void *)SetSpriteColor;
 
     //bi->CreateFeature = (void *)NULL;
     //bi->SetFeatureAttrs = (void *)NULL;
@@ -729,6 +748,8 @@ static int InitCard(struct BoardInfo* bi asm("a0"), const char **ToolTypes asm("
         TASKTAG_USERDATA,   (Tag)VC4Base,
         TAG_DONE
     );
+
+    VC4Base->vc4_SpriteShape = AllocMem(MAXSPRITEWIDTH * MAXSPRITEHEIGHT, MEMF_FAST | MEMF_REVERSE | MEMF_CLEAR);
 
     RawDoFmt("[vc4] InitCard ready\n", NULL, (APTR)putch, NULL);
 
@@ -992,6 +1013,8 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
     UWORD offset_y = 0;
     ULONG calc_width = 0;
     ULONG calc_height = 0;
+    ULONG sprite_width = 0;
+    ULONG sprite_height = 0;
     ULONG bytes_per_row = CalculateBytesPerRow(b, width, format);
     ULONG bytes_per_pix = bytes_per_row / width;
     UWORD pos = 0;
@@ -1029,6 +1052,13 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
         b->ModeInfo->Height == VC4Base->vc4_DispSize.height)
     {
         unity = 1;
+        sprite_width = MAXSPRITEWIDTH;
+        sprite_height = MAXSPRITEHEIGHT;
+
+        VC4Base->vc4_ScaleX = 0x10000;
+        VC4Base->vc4_ScaleY = 0x10000;
+        VC4Base->vc4_OffsetX = 0;
+        VC4Base->vc4_OffsetY = 0;
     }
     else
     {
@@ -1047,11 +1077,20 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
             scale = scale_x;
         }
 
+        VC4Base->vc4_ScaleX = scale;
+        VC4Base->vc4_ScaleY = (b->ModeInfo->Flags & GMF_DOUBLESCAN) ? scale >> 1 : scale;
+
         calc_width = (0x10000 * b->ModeInfo->Width) / scale;
         calc_height = (factor_y * b->ModeInfo->Height) / scale;
 
+        sprite_width = (0x10000 * MAXSPRITEWIDTH) / scale;
+        sprite_height = (factor_y * MAXSPRITEHEIGHT) / scale;
+
         offset_x = (VC4Base->vc4_DispSize.width - calc_width) >> 1;
         offset_y = (VC4Base->vc4_DispSize.height - calc_height) >> 1;
+
+        VC4Base->vc4_OffsetX = offset_x;
+        VC4Base->vc4_OffsetY = offset_y;
 
         ULONG args[] = {
             scale, scale_x, scale_y, recip_x, recip_y,
@@ -1069,37 +1108,92 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
         if (offset_only) {
             pos = VC4Base->vc4_ActivePlane;
             displist[pos + 4] = LE32(0xc0000000 | (ULONG)addr + y_offset * bytes_per_row + x_offset * bytes_per_pix);
+            SetSpritePosition(b, VC4Base->vc4_MouseX, VC4Base->vc4_MouseY, format);
         }
         else {
-            pos = AllocSlot(8, VC4Base);
+            pos = AllocSlot(8 + 18 + 4, VC4Base);
+            int cnt = pos + 1;
 
-            displist[pos + 0] = LE32(
+            VC4Base->vc4_PlaneCoord = &displist[cnt];
+            displist[cnt++] = LE32(POS0_X(offset_x) | POS0_Y(offset_y) | POS0_ALPHA(0xff));
+            
+            displist[cnt++] = LE32(POS2_H(b->ModeInfo->Height) | POS2_W(b->ModeInfo->Width) | (1 << 30));
+            displist[cnt++] = LE32(0xdeadbeef);
+            displist[cnt++] = LE32(0xc0000000 | (ULONG)addr + y_offset * bytes_per_row + x_offset * bytes_per_pix);
+            displist[cnt++] = LE32(0xdeadbeef);
+            displist[cnt++] = LE32(bytes_per_row);
+
+            displist[pos] = LE32(
                 CONTROL_VALID
-                | CONTROL_WORDS(7)
+                | CONTROL_WORDS(cnt - pos)
                 | CONTROL_UNITY
                 | mode_table[format]);
 
-            displist[pos + 1] = LE32(POS0_X(offset_x) | POS0_Y(offset_y) | POS0_ALPHA(0xff));
-            VC4Base->vc4_PlaneCoord = &displist[pos + 1];
-
-            displist[pos + 2] = LE32(POS2_H(b->ModeInfo->Height) | POS2_W(b->ModeInfo->Width) | (1 << 30));
-            displist[pos + 3] = LE32(0xdeadbeef);
-            displist[pos + 4] = LE32(0xc0000000 | (ULONG)addr + y_offset * bytes_per_row + x_offset * bytes_per_pix);
-            displist[pos + 5] = LE32(0xdeadbeef);
-            displist[pos + 6] = LE32(bytes_per_row);
-            displist[pos + 7] = LE32(0x80000000);
-
             VC4Base->vc4_PlaneScalerX = NULL;
             VC4Base->vc4_PlaneScalerY = NULL;
+
+            int mouse_pos = cnt;
+            cnt = mouse_pos + 1;
+
+            VC4Base->vc4_MouseCoord = &displist[cnt];
+            displist[cnt++] = LE32( POS0_X(offset_x + VC4Base->vc4_MouseX - x_offset) |
+                                    POS0_Y(offset_y + VC4Base->vc4_MouseY - y_offset) | POS0_ALPHA(0xff));
+            displist[cnt++] = LE32(POS1_H(sprite_height) | POS1_W(sprite_width));
+            displist[cnt++] = LE32(POS2_H(MAXSPRITEHEIGHT) | POS2_W(MAXSPRITEWIDTH) | (SCALER_POS2_ALPHA_MODE_PIPELINE << SCALER_POS2_ALPHA_MODE_SHIFT));
+            displist[cnt++] = LE32(0xdeadbeef); // Scratch written by HVS
+
+            displist[cnt++] = LE32(0xc0000000 | (ULONG)VC4Base->vc4_SpriteShape);
+            displist[cnt++] = LE32(0xdeadbeef); // Scratch written by HVS
+
+            // Write pitch
+            displist[cnt++] = LE32(MAXSPRITEWIDTH);
+
+            int clut_off = cnt;
+            displist[cnt++] = LE32(0xc0000000 | (0x300 << 2));
+
+            // LMB address - just behind LMB of main plane
+            displist[cnt++] = LE32(16 * b->ModeInfo->Width / 2);
+
+            // Write PPF Scaling
+            displist[cnt++] = LE32((scale << 8) | VC4Base->vc4_Scaler | VC4Base->vc4_Phase);
+            if (b->ModeInfo->Flags & GMF_DOUBLESCAN)
+                displist[cnt++] = LE32(((scale << 7) & ~0xff) | VC4Base->vc4_Scaler | VC4Base->vc4_Phase);
+            else
+                displist[cnt++] = LE32((scale << 8) | VC4Base->vc4_Scaler | VC4Base->vc4_Phase);
+            displist[cnt++] = LE32(0); // Scratch written by HVS
+
+            // Write scaling kernel offset in dlist
+            displist[cnt++] = LE32(unity_kernel);
+            displist[cnt++] = LE32(unity_kernel);
+            displist[cnt++] = LE32(unity_kernel);
+            displist[cnt++] = LE32(unity_kernel);
+
+            displist[mouse_pos] = LE32(
+                CONTROL_VALID               |
+                CONTROL_WORDS(cnt-mouse_pos)    |
+                0x01800 | 
+                mode_table[RGBFB_CLUT]
+            );
+
+            displist[cnt++] = LE32(0x80000000);
+
+            displist[clut_off] = LE32(0xc0000000 | (cnt << 2));
+
+            displist[cnt++] = LE32(0x00000000);
+            VC4Base->vc4_MousePalette = &displist[cnt];
+            displist[cnt++] = LE32(VC4Base->vc4_SpriteColors[0]);
+            displist[cnt++] = LE32(VC4Base->vc4_SpriteColors[1]);
+            displist[cnt++] = LE32(VC4Base->vc4_SpriteColors[2]);
         }
     } else {
         if (offset_only) {
             pos = VC4Base->vc4_ActivePlane;
             displist[pos + 5] = LE32(0xc0000000 | (ULONG)addr + y_offset * bytes_per_row + x_offset * bytes_per_pix);
+            SetSpritePosition(b, VC4Base->vc4_MouseX, VC4Base->vc4_MouseY, format);
         }
         else 
         {
-            pos = AllocSlot(18, VC4Base);
+            pos = AllocSlot(2*18 + 4, VC4Base);
             int cnt = pos + 1;
 
             VC4Base->vc4_PlaneCoord = &displist[cnt];
@@ -1140,14 +1234,73 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
             displist[cnt++] = LE32(kernel_start);
             displist[cnt++] = LE32(kernel_start);
 
-            displist[cnt++] = LE32(0x80000000);
-
             displist[pos] = LE32(
-                CONTROL_VALID               |
-                CONTROL_WORDS(cnt-pos-1)    |
+                CONTROL_VALID             |
+                CONTROL_WORDS(cnt-pos)    |
                 0x01800 | 
                 mode_table[format]
             );
+
+            int mouse_pos = cnt;
+            cnt = mouse_pos + 1;
+
+            VC4Base->vc4_MouseCoord = &displist[cnt];
+            displist[cnt++] = LE32( POS0_X(offset_x + 0x10000 * (VC4Base->vc4_MouseX - x_offset) / VC4Base->vc4_ScaleX) |
+                                    POS0_Y(offset_y + 0x10000 * (VC4Base->vc4_MouseY - y_offset) / VC4Base->vc4_ScaleY) | POS0_ALPHA(0xff));
+            displist[cnt++] = LE32(POS1_H(sprite_height) | POS1_W(sprite_width));
+            displist[cnt++] = LE32(POS2_H(MAXSPRITEHEIGHT) | POS2_W(MAXSPRITEWIDTH) | (SCALER_POS2_ALPHA_MODE_PIPELINE << SCALER_POS2_ALPHA_MODE_SHIFT));
+            displist[cnt++] = LE32(0xdeadbeef); // Scratch written by HVS
+
+            displist[cnt++] = LE32(0xc0000000 | (ULONG)VC4Base->vc4_SpriteShape);
+            displist[cnt++] = LE32(0xdeadbeef); // Scratch written by HVS
+
+            // Write pitch
+            displist[cnt++] = LE32(MAXSPRITEWIDTH);
+
+            int clut_off = cnt;
+            displist[cnt++] = LE32(0xc0000000 | (0x300 << 2));
+
+            // LMB address - just behind LMB of main plane
+            displist[cnt++] = LE32(16 * b->ModeInfo->Width / 2);
+
+            // Write PPF Scaling
+            displist[cnt++] = LE32((scale << 8) | VC4Base->vc4_Scaler | VC4Base->vc4_Phase);
+            if (b->ModeInfo->Flags & GMF_DOUBLESCAN)
+                displist[cnt++] = LE32(((scale << 7) & ~0xff) | VC4Base->vc4_Scaler | VC4Base->vc4_Phase);
+            else
+                displist[cnt++] = LE32((scale << 8) | VC4Base->vc4_Scaler | VC4Base->vc4_Phase);
+            displist[cnt++] = LE32(0); // Scratch written by HVS
+
+            // Write scaling kernel offset in dlist
+            displist[cnt++] = LE32(kernel_start);
+            displist[cnt++] = LE32(kernel_start);
+            displist[cnt++] = LE32(kernel_start);
+            displist[cnt++] = LE32(kernel_start);
+
+            displist[mouse_pos] = LE32(
+                CONTROL_VALID               |
+                CONTROL_WORDS(cnt-mouse_pos)    |
+                0x01800 | 
+                mode_table[RGBFB_CLUT]
+            );
+
+            displist[cnt++] = LE32(0x80000000);
+
+            displist[clut_off] = LE32(0xc0000000 | (cnt << 2));
+
+            displist[cnt++] = LE32(0x00000000);
+            VC4Base->vc4_MousePalette = &displist[cnt];
+            displist[cnt++] = LE32(VC4Base->vc4_SpriteColors[0]);
+            displist[cnt++] = LE32(VC4Base->vc4_SpriteColors[1]);
+            displist[cnt++] = LE32(VC4Base->vc4_SpriteColors[2]);
+
+            for (int i=pos; i < cnt; i++) {
+                ULONG args[] = {
+                    i, LE32(displist[i])
+                };
+
+                RawDoFmt("[vc4] dlist[%ld] = %08lx\n", args, (APTR)putch, NULL);
+            }
         }
     }
 
@@ -1316,6 +1469,151 @@ void SetClearMask (__REGA0(struct BoardInfo *b), __REGD0(UBYTE mask)) {
 
 void SetReadPlane (__REGA0(struct BoardInfo *b), __REGD0(UBYTE plane)) {
 }
+
+void SetSprite (__REGA0(struct BoardInfo *b), __REGD0(BOOL enable), __REGD7(RGBFTYPE format))
+{
+    struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
+
+    if (enable) {
+        LONG _x;
+        LONG _y;
+
+        if (VC4Base->vc4_ScaleX)
+            _x = 0x10000 * VC4Base->vc4_MouseX / VC4Base->vc4_ScaleX;
+        else
+            _x = VC4Base->vc4_MouseX;
+
+        if (VC4Base->vc4_ScaleY)
+            _y = 0x10000 * VC4Base->vc4_MouseY / VC4Base->vc4_ScaleX;
+        else
+            _y = VC4Base->vc4_MouseY;
+
+        if (VC4Base->vc4_MouseCoord) {
+            VC4Base->vc4_MouseCoord[0] = LE32(POS0_X(_x) | POS0_Y(_y) | POS0_ALPHA(0xff));
+        }
+    }
+    else
+    {
+        if (VC4Base->vc4_MouseCoord) {
+            VC4Base->vc4_MouseCoord[0] = LE32(POS0_X(-1) | POS0_Y(-1) | POS0_ALPHA(0xff));
+        }
+    }
+}
+
+void SetSpritePosition (__REGA0(struct BoardInfo *b), __REGD0(WORD x), __REGD1(WORD y), __REGD7(RGBFTYPE format))
+{
+    struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
+
+/*
+    x = b->MouseX - b->XOffset;
+    y = b->MouseY - b->YOffset;
+*/
+
+    VC4Base->vc4_MouseX = x;
+    VC4Base->vc4_MouseY = y;
+
+    x -= VC4Base->vc4_LastPanning.lp_X;
+    y -= VC4Base->vc4_LastPanning.lp_Y;
+
+    LONG _x;
+    LONG _y;
+
+    if (VC4Base->vc4_ScaleX)
+        _x = 0x10000 * x / VC4Base->vc4_ScaleX;
+    else
+        _x = x;
+
+    if (VC4Base->vc4_ScaleY)
+        _y = 0x10000 * y / VC4Base->vc4_ScaleX;
+    else
+        _y = y;
+
+    _x += VC4Base->vc4_OffsetX;
+    _y += VC4Base->vc4_OffsetY;
+
+    if (VC4Base->vc4_MouseCoord) {   
+        VC4Base->vc4_MouseCoord[0] = LE32(POS0_X(_x) | POS0_Y(_y) | POS0_ALPHA(0x80));
+    }
+}
+
+void SetSpriteImage (__REGA0(struct BoardInfo *b), __REGD7(RGBFTYPE format))
+{
+    struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
+    struct ExecBase *SysBase = *(struct ExecBase **)4;
+
+    for (int i=0; i < MAXSPRITEWIDTH * MAXSPRITEHEIGHT; i++)
+        VC4Base->vc4_SpriteShape[i] = 0;
+
+    if ((b->Flags & (BIF_HIRESSPRITE | BIF_BIGSPRITE)) == 0)
+    {
+        UWORD *data = b->MouseImage;
+        data += 2;
+
+        for (int y=0; y < b->MouseHeight; y++) {
+            UWORD p0 = *data++;
+            UWORD p1 = *data++;
+            UWORD mask = 0x8000;
+            for (int x=0; x < 16; x++) {
+                UBYTE pix = 0;
+                if (p0 & mask) pix |= 1;
+                if (p1 & mask) pix |= 2;
+                VC4Base->vc4_SpriteShape[y * MAXSPRITEWIDTH + x] = pix;
+                mask = mask >> 1;
+            }
+        }
+    }
+    else if (b->Flags & BIF_BIGSPRITE) {
+        UWORD *data = b->MouseImage;
+        data += 2;
+
+        for (int y=0; y < b->MouseHeight; y++) {
+            UWORD p0 = *data++;
+            UWORD p1 = *data++;
+            UWORD mask = 0x8000;
+            for (int x=0; x < 16; x++) {
+                UBYTE pix = 0;
+                if (p0 & mask) pix |= 1;
+                if (p1 & mask) pix |= 2;
+                VC4Base->vc4_SpriteShape[2 * y * MAXSPRITEWIDTH + 2*x] = pix;
+                VC4Base->vc4_SpriteShape[2 * y * MAXSPRITEWIDTH + 2*x + 1] = pix;
+                VC4Base->vc4_SpriteShape[(2 * y + 1) * MAXSPRITEWIDTH + 2*x] = pix;
+                VC4Base->vc4_SpriteShape[(2 * y + 1) * MAXSPRITEWIDTH + 2*x + 1] = pix;
+                mask = mask >> 1;
+            }
+        }
+    }
+    else if (b->Flags & BIF_HIRESSPRITE) {
+        ULONG *data = (ULONG*)b->MouseImage;
+        data += 2;
+
+        for (int y=0; y < b->MouseHeight; y++) {
+            ULONG p0 = *data++;
+            ULONG p1 = *data++;
+            ULONG mask = 0x80000000;
+            for (int x=0; x < 32; x++) {
+                UBYTE pix = 0;
+                if (p0 & mask) pix |= 1;
+                if (p1 & mask) pix |= 2;
+                VC4Base->vc4_SpriteShape[y * MAXSPRITEWIDTH + x] = pix;
+                mask = mask >> 1;
+            }
+        }
+    }
+
+    CacheClearE(VC4Base->vc4_SpriteShape, MAXSPRITEHEIGHT * MAXSPRITEWIDTH, CACRF_ClearD);
+}
+
+void SetSpriteColor (__REGA0(struct BoardInfo *b), __REGD0(UBYTE idx), __REGD1(UBYTE R), __REGD2(UBYTE G), __REGD3(UBYTE B), __REGD7(RGBFTYPE format))
+{
+    struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
+    if (idx < 3) {
+        VC4Base->vc4_SpriteColors[idx] = (VC4Base->vc4_SpriteAlpha << 24) | (R << 16) | (G << 8) | B;
+        if (VC4Base->vc4_MousePalette) {
+            VC4Base->vc4_MousePalette[idx] = LE32(VC4Base->vc4_SpriteColors[idx]);
+        }
+    }
+}
+
 
 ULONG GetVBeamPos(struct BoardInfo *b asm("a0"))
 {

@@ -56,13 +56,25 @@ struct VC4Base {
     double                  vc4_Kernel_B;
     double                  vc4_Kernel_C;
     UBYTE                   vc4_UseKernel;
+    UBYTE                   vc4_SpriteAlpha;
+
+    ULONG                   vc4_ScaleX;
+    ULONG                   vc4_ScaleY;
+
+    WORD                    vc4_MouseX;
+    WORD                    vc4_MouseY;
+    WORD                    vc4_OffsetX;
+    WORD                    vc4_OffsetY;
 
     volatile ULONG *        vc4_PlaneCoord;
     volatile ULONG *        vc4_PlaneScalerX;
     volatile ULONG *        vc4_PlaneScalerY;
     volatile ULONG *        vc4_MouseCoord;
+    volatile ULONG *        vc4_MousePalette;
     volatile ULONG *        vc4_PIPCoord;
     volatile ULONG *        vc4_Kernel;
+
+    ULONG                   vc4_SpriteColors[3];
 
     struct MsgPort          *vc4_Port;
     struct Task             *vc4_Task;
@@ -75,6 +87,7 @@ struct VC4Base {
         RGBFTYPE    lp_Format;
     }                       vc4_LastPanning;
     
+    UBYTE *                 vc4_SpriteShape;
 };
 
 
