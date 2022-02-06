@@ -55,6 +55,17 @@ struct VC4Base {
     ULONG                   vc4_VertFreq;
     double                  vc4_Kernel_B;
     double                  vc4_Kernel_C;
+    UBYTE                   vc4_UseKernel;
+
+    volatile ULONG *        vc4_PlaneCoord;
+    volatile ULONG *        vc4_PlaneScalerX;
+    volatile ULONG *        vc4_PlaneScalerY;
+    volatile ULONG *        vc4_MouseCoord;
+    volatile ULONG *        vc4_PIPCoord;
+    volatile ULONG *        vc4_Kernel;
+
+    struct MsgPort          *vc4_Port;
+    struct Task             *vc4_Task;
 
     struct {
         APTR        lp_Addr;

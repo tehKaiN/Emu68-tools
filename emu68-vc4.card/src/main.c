@@ -21,6 +21,7 @@
 #include "emu68-vc4.h"
 #include "mbox.h"
 #include "vpu/block_copy.h"
+#include "support.h"
 
 int __attribute__((no_reorder)) _start()
 {
@@ -302,16 +303,23 @@ static int mitchell_netravali(double x, double b, double c)
     return (int)k;
 }
 
-static void compute_scaling_kernel(uint32_t *dlist_memory, double b, double c)
+static int kernel_start = 0xff0;
+
+static int compute_scaling_kernel(uint32_t *dlist_memory, double b, double c)
 {
+    struct ExecBase *SysBase = *(struct ExecBase **)4;
     uint32_t half_kernel[6] = {0, 0, 0, 0, 0, 0};
-    int kernel_start = 0xff0;
+    
+    kernel_start ^= 0x10;
 
     for (int i=0; i < 16; i++) {
         int val = mitchell_netravali(2.0 - (double)i / 7.5, b, c);
+#if 0
         LONG args[] = {
             i, val
         };
+        RawDoFmt("[vc4] Kernel[%ld] = %ld\n", args, (APTR)putch, NULL);
+#endif
         half_kernel[i / 3] |= (val & 0x1ff) << (9 * (i % 3));
     }
     half_kernel[5] |= half_kernel[5] << 9;
@@ -323,18 +331,25 @@ static void compute_scaling_kernel(uint32_t *dlist_memory, double b, double c)
             dlist_memory[kernel_start + i] = LE32(half_kernel[11 - i - 1]);
         }
     }
+
+    return kernel_start;
 }
 
-static void compute_nearest_neighbour_kernel(uint32_t *dlist_memory)
+static int compute_nearest_neighbour_kernel(uint32_t *dlist_memory)
 {
+    struct ExecBase *SysBase = *(struct ExecBase **)4;
     uint32_t half_kernel[6] = {0, 0, 0, 0, 0, 0};
-    int kernel_start = 0xff0;
+    
+    kernel_start ^= 0x10;
 
     for (int i=0; i < 16; i++) {
         int val = i < 8 ? 0 : 255;
+#if 0
         LONG args[] = {
             i, val
         };
+        RawDoFmt("[vc4] Kernel[%ld] = %ld\n", args, (APTR)putch, NULL);
+#endif
         half_kernel[i / 3] |= (val & 0x1ff) << (9 * (i % 3));
     }
     half_kernel[5] |= half_kernel[5] << 9;
@@ -346,6 +361,115 @@ static void compute_nearest_neighbour_kernel(uint32_t *dlist_memory)
             dlist_memory[kernel_start + i] = LE32(half_kernel[11 - i - 1]);
         }
     }
+
+    return kernel_start;
+}
+
+#include "messages.h"
+
+static void vc4_Task()
+{
+    struct ExecBase *SysBase = *(struct ExecBase **)4;
+    struct Task *me = FindTask(NULL);
+    struct VC4Base *VC4Base = me->tc_UserData;
+    struct MsgPort *port = CreateMsgPort();
+    ULONG sigset;
+
+    port->mp_Node.ln_Name = "Emu68 VC4";
+    AddPort(port);
+
+    VC4Base->vc4_Port = port;
+    
+    do {
+        sigset = Wait(SIGBREAKF_CTRL_C | (1 << port->mp_SigBit));
+        if (sigset & (1 << port->mp_SigBit))
+        {
+            struct Message *msg;
+            
+            while((msg = GetMsg(port)))
+            {
+                if (msg->mn_Length == sizeof(struct VC4Msg)) {
+                    struct VC4Msg *vmsg = (struct VC4Msg *)msg;
+
+                    switch (vmsg->cmd) {
+                        case VCMD_SET_KERNEL:
+                            if (vmsg->SetKernel.kernel) {
+                                compute_scaling_kernel((uint32_t *)0xf2402000, vmsg->SetKernel.b, vmsg->SetKernel.c);
+                            }
+                            else {
+                                compute_nearest_neighbour_kernel((uint32_t *)0xf2402000);
+                            }
+                            if (VC4Base->vc4_Kernel) {
+                                volatile ULONG *stat = (ULONG*)(0xf2400000 + SCALER_DISPSTAT1);
+                                ULONG cnt1 = (*stat >> 12) & 0x3f;
+
+                                VC4Base->vc4_Kernel[0] = LE32(kernel_start);
+                                VC4Base->vc4_Kernel[1] = LE32(kernel_start);
+                                VC4Base->vc4_Kernel[2] = LE32(kernel_start);
+                                VC4Base->vc4_Kernel[3] = LE32(kernel_start);
+
+                                do { asm volatile("nop"); } while(cnt1 == ((*stat >> 12) & 0x3f));
+                            }
+                            break;
+                        
+                        case VCMD_GET_KERNEL:
+                            vmsg->GetKernel.kernel = VC4Base->vc4_UseKernel;
+                            vmsg->GetKernel.b = VC4Base->vc4_Kernel_B;
+                            vmsg->GetKernel.c = VC4Base->vc4_Kernel_C;
+                            break;
+                        
+                        case VCMD_GET_SCALER:
+                            if (VC4Base->vc4_PlaneScalerX) {
+                                ULONG val = LE32(*VC4Base->vc4_PlaneScalerX);
+                                vmsg->GetScaler.val = (val >> 30) & 3;
+                            }
+                            else
+                                vmsg->GetScaler.val = 0;
+                            break;
+
+                        case VCMD_SET_SCALER:
+                            if (VC4Base->vc4_PlaneScalerX) {
+                                ULONG val = LE32(*VC4Base->vc4_PlaneScalerX);
+                                val = (val & 0x3fffffff) | (vmsg->SetScaler.val << 30);
+                                *VC4Base->vc4_PlaneScalerX = LE32(val);
+                            }
+                            if (VC4Base->vc4_PlaneScalerY) {
+                                ULONG val = LE32(*VC4Base->vc4_PlaneScalerY);
+                                val = (val & 0x3fffffff) | (vmsg->SetScaler.val << 30);
+                                *VC4Base->vc4_PlaneScalerY = LE32(val);
+                            }
+                            break;
+                        
+                        case VCMD_GET_PHASE:
+                            if (VC4Base->vc4_PlaneScalerX) {
+                                ULONG val = LE32(*VC4Base->vc4_PlaneScalerX);
+                                vmsg->GetPhase.val = val & 0xff;
+                            }
+                            else
+                                vmsg->GetPhase.val = 0;
+                            break;
+
+                        case VCMD_SET_PHASE:
+                            if (VC4Base->vc4_PlaneScalerX) {
+                                ULONG val = LE32(*VC4Base->vc4_PlaneScalerX);
+                                val = (val & 0xffffff00) | (vmsg->SetPhase.val & 0xff);
+                                *VC4Base->vc4_PlaneScalerX = LE32(val);
+                            }
+                            if (VC4Base->vc4_PlaneScalerY) {
+                                ULONG val = LE32(*VC4Base->vc4_PlaneScalerY);
+                                val = (val & 0xffffff00) | (vmsg->SetPhase.val & 0xff);
+                                *VC4Base->vc4_PlaneScalerY = LE32(val);
+                            }
+                            break;
+                    }
+                }
+                ReplyMsg(msg);
+            }
+        }
+    } while ((sigset & SIGBREAKF_CTRL_C) == 0);
+
+    RemPort(port);
+    DeleteMsgPort(port);
 }
 
 static int InitCard(struct BoardInfo* bi asm("a0"), const char **ToolTypes asm("a1"), struct VC4Base *VC4Base asm("a6"))
@@ -439,7 +563,7 @@ static int InitCard(struct BoardInfo* bi asm("a0"), const char **ToolTypes asm("
 
     VC4Base->vc4_Phase = 128;
     VC4Base->vc4_Scaler = 0xc0000000;
-    int kernel = 1;
+    VC4Base->vc4_UseKernel = 1;
 
     for (;ToolTypes[0] != NULL; ToolTypes++)
     {
@@ -513,9 +637,9 @@ static int InitCard(struct BoardInfo* bi asm("a0"), const char **ToolTypes asm("
             }
 
             if (num == 0)
-                kernel = 0;
+                VC4Base->vc4_UseKernel = 0;
             else
-                kernel = 1;
+                VC4Base->vc4_UseKernel = 1;
         }
         else if (_strcmp(tt, "VC4_KERNEL_B") == '=')
         {
@@ -551,7 +675,7 @@ static int InitCard(struct BoardInfo* bi asm("a0"), const char **ToolTypes asm("
         }
     }
 
-    if (kernel)
+    if (VC4Base->vc4_UseKernel)
         compute_scaling_kernel((uint32_t *)0xf2402000, VC4Base->vc4_Kernel_B, VC4Base->vc4_Kernel_C);
     else
         compute_nearest_neighbour_kernel((uint32_t *)0xf2402000);
@@ -597,6 +721,14 @@ static int InitCard(struct BoardInfo* bi asm("a0"), const char **ToolTypes asm("
     //bi->CreateFeature = (void *)NULL;
     //bi->SetFeatureAttrs = (void *)NULL;
     //bi->DeleteFeature = (void *)NULL;
+
+    VC4Base->vc4_Task = NewCreateTask(
+        TASKTAG_PC,         (Tag)vc4_Task,
+        TASKTAG_NAME,       (Tag)"VC4 Task",
+        TASKTAG_STACKSIZE,  10240,
+        TASKTAG_USERDATA,   (Tag)VC4Base,
+        TAG_DONE
+    );
 
     RawDoFmt("[vc4] InitCard ready\n", NULL, (APTR)putch, NULL);
 
@@ -931,7 +1063,7 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
                     "[vc4] Scaled size: %ld x %ld, offset X %ld, offset Y %ld\n", args, (APTR)putch, NULL);
     }
 
-    volatile uint32_t *displist = (uint32_t *)0xf2402000;
+    volatile ULONG *displist = (ULONG *)0xf2402000;
    
     if (unity) {
         if (offset_only) {
@@ -948,12 +1080,17 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
                 | mode_table[format]);
 
             displist[pos + 1] = LE32(POS0_X(offset_x) | POS0_Y(offset_y) | POS0_ALPHA(0xff));
+            VC4Base->vc4_PlaneCoord = &displist[pos + 1];
+
             displist[pos + 2] = LE32(POS2_H(b->ModeInfo->Height) | POS2_W(b->ModeInfo->Width) | (1 << 30));
             displist[pos + 3] = LE32(0xdeadbeef);
             displist[pos + 4] = LE32(0xc0000000 | (ULONG)addr + y_offset * bytes_per_row + x_offset * bytes_per_pix);
             displist[pos + 5] = LE32(0xdeadbeef);
             displist[pos + 6] = LE32(bytes_per_row);
             displist[pos + 7] = LE32(0x80000000);
+
+            VC4Base->vc4_PlaneScalerX = NULL;
+            VC4Base->vc4_PlaneScalerY = NULL;
         }
     } else {
         if (offset_only) {
@@ -965,6 +1102,7 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
             pos = AllocSlot(18, VC4Base);
             int cnt = pos + 1;
 
+            VC4Base->vc4_PlaneCoord = &displist[cnt];
             displist[cnt++] = LE32(POS0_X(offset_x) | POS0_Y(offset_y) | POS0_ALPHA(0xff));
             displist[cnt++] = LE32(POS1_H(calc_height) | POS1_W(calc_width));
             displist[cnt++] = LE32(POS2_H(b->ModeInfo->Height) | POS2_W(b->ModeInfo->Width) | (SCALER_POS2_ALPHA_MODE_FIXED << SCALER_POS2_ALPHA_MODE_SHIFT));
@@ -985,6 +1123,9 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
             displist[cnt++] = LE32(0);
 
             // Write PPF Scaling
+            VC4Base->vc4_PlaneScalerX = &displist[cnt];
+            VC4Base->vc4_PlaneScalerY = &displist[cnt+1];
+
             displist[cnt++] = LE32((scale << 8) | VC4Base->vc4_Scaler | VC4Base->vc4_Phase);
             if (b->ModeInfo->Flags & GMF_DOUBLESCAN)
                 displist[cnt++] = LE32(((scale << 7) & ~0xff) | VC4Base->vc4_Scaler | VC4Base->vc4_Phase);
@@ -993,10 +1134,11 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
             displist[cnt++] = LE32(0); // Scratch written by HVS
 
             // Write scaling kernel offset in dlist
-            displist[cnt++] = LE32(0xff0);
-            displist[cnt++] = LE32(0xff0);
-            displist[cnt++] = LE32(0xff0);
-            displist[cnt++] = LE32(0xff0);
+            VC4Base->vc4_Kernel = &displist[cnt];
+            displist[cnt++] = LE32(kernel_start);
+            displist[cnt++] = LE32(kernel_start);
+            displist[cnt++] = LE32(kernel_start);
+            displist[cnt++] = LE32(kernel_start);
 
             displist[cnt++] = LE32(0x80000000);
 
