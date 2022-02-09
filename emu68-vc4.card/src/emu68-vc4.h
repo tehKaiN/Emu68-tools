@@ -57,6 +57,7 @@ struct VC4Base {
     double                  vc4_Kernel_C;
     UBYTE                   vc4_UseKernel;
     UBYTE                   vc4_SpriteAlpha;
+    UBYTE                   vc4_SpriteVisible;
 
     ULONG                   vc4_ScaleX;
     ULONG                   vc4_ScaleY;

@@ -1139,7 +1139,8 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
         if (offset_only) {
             pos = VC4Base->vc4_ActivePlane;
             displist[pos + 4] = LE32(0xc0000000 | (ULONG)addr + y_offset * bytes_per_row + x_offset * bytes_per_pix);
-            SetSpritePosition(b, VC4Base->vc4_MouseX, VC4Base->vc4_MouseY, format);
+            if (VC4Base->vc4_SpriteVisible)
+                SetSpritePosition(b, VC4Base->vc4_MouseX, VC4Base->vc4_MouseY, format);
         }
         else {
             pos = AllocSlot(8 + 18 + 4, VC4Base);
@@ -1220,7 +1221,8 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
         if (offset_only) {
             pos = VC4Base->vc4_ActivePlane;
             displist[pos + 5] = LE32(0xc0000000 | (ULONG)addr + y_offset * bytes_per_row + x_offset * bytes_per_pix);
-            SetSpritePosition(b, VC4Base->vc4_MouseX, VC4Base->vc4_MouseY, format);
+            if (VC4Base->vc4_SpriteVisible)
+                SetSpritePosition(b, VC4Base->vc4_MouseX, VC4Base->vc4_MouseY, format);
         }
         else 
         {
@@ -1505,6 +1507,8 @@ void SetSprite (__REGA0(struct BoardInfo *b), __REGD0(BOOL enable), __REGD7(RGBF
 {
     struct VC4Base *VC4Base = (struct VC4Base *)b->CardBase;
 
+    VC4Base->vc4_SpriteVisible = enable;
+
     if (enable) {
         LONG _x;
         LONG _y;
@@ -1563,7 +1567,7 @@ void SetSpritePosition (__REGA0(struct BoardInfo *b), __REGD0(WORD x), __REGD1(W
     _y += VC4Base->vc4_OffsetY;
 
     if (VC4Base->vc4_MouseCoord) {   
-        VC4Base->vc4_MouseCoord[0] = LE32(POS0_X(_x) | POS0_Y(_y) | POS0_ALPHA(0x80));
+        VC4Base->vc4_MouseCoord[0] = LE32(POS0_X(_x) | POS0_Y(_y) | POS0_ALPHA(0xff));
     }
 }
 
