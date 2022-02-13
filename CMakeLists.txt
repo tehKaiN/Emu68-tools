@@ -12,3 +12,6 @@ add_subdirectory(EmuControl)
 add_subdirectory(SmallPT)
 add_subdirectory(Buddhabrot)
 add_subdirectory(VC4Tweak)
+
+# Contribs
+add_subdirectory(Emu68Contribs/Emu68Info)
