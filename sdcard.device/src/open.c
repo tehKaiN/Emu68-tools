@@ -30,7 +30,7 @@ void SD_Open(struct IORequest * io asm("a1"), LONG unitNumber asm("d0"), ULONG f
         io->io_Error = TDERR_BadUnitNum;
     }
 
-    /* 
+    /*
         Do whatever necessary to open given unit number with flags, set NT_REPLYMSG if 
         opening device shall complete with success, set io_Error otherwise
     */
@@ -42,7 +42,7 @@ void SD_Open(struct IORequest * io asm("a1"), LONG unitNumber asm("d0"), ULONG f
 
         /* Increase open counter of the unit */
         u->su_Unit.unit_OpenCnt++;
-      
+
         /* Increase global open coutner of the device */
         SDCardBase->sd_Device.dd_Library.lib_OpenCnt++;
         SDCardBase->sd_Device.dd_Library.lib_Flags &= ~LIBF_DELEXP;
@@ -55,6 +55,6 @@ void SD_Open(struct IORequest * io asm("a1"), LONG unitNumber asm("d0"), ULONG f
     {
         io->io_Error = IOERR_OPENFAIL;
     }
-    
+
     /* In contrast to normal library there is no need to return anything */
 }
