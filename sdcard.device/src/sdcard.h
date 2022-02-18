@@ -109,6 +109,8 @@ struct SDCardBase {
     UBYTE               sd_HideUnit0;
     UBYTE               sd_ReadOnlyUnit0;
     UBYTE               sd_Verbose;
+
+    struct Interrupt    sd_Interrupt;
 };
 
 struct SDCardUnit {

@@ -147,6 +147,30 @@
 
 #define HC_TIMEOUT_DEFAULT      0x00f00000
 
+asm("
+    .globl _sdhost_irq_gate
+_sdhost_irq_gate:
+    bsr.b _sdhost_irq
+    tst.l d0
+    rts
+");
+
+int sdhost_irq()
+{
+    struct ExecBase *SysBase = *(struct ExecBase **)4;
+
+    if (rd32((APTR)0xf3000000, 0x34) & 0x80000000)
+    {
+        wr32((APTR)0xf3000000, 0x38, 0x80000000);
+        RawDoFmt("EXTER from local timer!\n", NULL, (APTR)putch, NULL);
+        //putch('!', NULL);
+        return 1;
+    }
+    else {
+        return 0;
+    }
+}
+
 ULONG sdhost_getclock(struct SDCardBase *SDCardBase)
 {
     struct ExecBase *SysBase = SDCardBase->sd_SysBase;

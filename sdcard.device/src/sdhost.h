@@ -11,5 +11,7 @@ void sdhost_cmd(ULONG command, ULONG arg, ULONG timeout, struct SDCardBase *SDCa
 int sdhost_card_init(struct SDCardBase *SDCardBase);
 int sdhost_write(uint8_t *buf, uint32_t buf_size, uint32_t block_no, struct SDCardBase *SDCardBase);
 int sdhost_read(uint8_t *buf, uint32_t buf_size, uint32_t block_no, struct SDCardBase *SDCardBase);
+int sdhost_irq();
+int sdhost_irq_gate();
 
 #endif /* _SDHOST_H */
