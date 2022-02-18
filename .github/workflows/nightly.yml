@@ -24,6 +24,8 @@ jobs:
     - uses: actions/checkout@v2
       with: 
         submodules: 'true'
+    - run: cd Emu68Contribs && git checkout main && git pull --allow-unrelated-histories
+    #- run: git submodule update --remote --recursive --merge --force
 
     - name: Create Build Environment
       # Some projects don't allow in-source building, so create a separate build directory
@@ -87,6 +89,7 @@ jobs:
         path: ${{runner.workspace}}/uploads
     
     - name: Deploy release
+      id: deploy
       uses: WebFreak001/deploy-nightly@v1.1.0
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # automatically provided by github actions
@@ -97,3 +100,19 @@ jobs:
         asset_name: Emu68-tools-$$.zip # name to upload the release as, use $$ to insert date (YYYYMMDD) and 6 letter commit hash
         asset_content_type: application/zip # required by GitHub API
         max_releases: 7 # optional, if there are more releases than this matching the asset_name, the oldest ones are going to be deleted
+
+    - name: Declare some variables
+      id: vars
+      shell: bash
+      run: |
+        echo "::set-output name=build_date::$(date +"%Y%m%d")"
+        echo "::set-output name=sha_short::${GITHUB_SHA::6}"
+
+    - name: Webhook
+      if: ${{ steps.deploy.outputs.uploaded == 'yes' }}
+      uses: fjogeleit/http-request-action@master
+      with:
+        url: "${{ secrets.DISCORD_WEBHOOK }}"
+        method: 'POST'
+        data: '{"username":"Ziggsty the friendly Emu","avatar_url":"https://repository-images.githubusercontent.com/168139345/df1ee280-f4d7-11e9-98df-201401d8d375","content":"[**Emu68-tools**]: New nightly available!","embeds":[{"title":"Emu68-tools-${{ steps.vars.outputs.build_date }}-${{ steps.vars.outputs.sha_short }}.zip","url":"https://github.com/michalsc/Emu68-tools/releases/download/nightly/Emu68-tools-${{ steps.vars.outputs.build_date }}-${{ steps.vars.outputs.sha_short }}.zip"}]}'
+        contentType: "application/json"
