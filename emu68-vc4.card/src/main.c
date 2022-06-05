@@ -1326,7 +1326,7 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
             displist[cnt++] = LE32(VC4Base->vc4_SpriteColors[0]);
             displist[cnt++] = LE32(VC4Base->vc4_SpriteColors[1]);
             displist[cnt++] = LE32(VC4Base->vc4_SpriteColors[2]);
-
+#if 0
             for (int i=pos; i < cnt; i++) {
                 ULONG args[] = {
                     i, LE32(displist[i])
@@ -1334,6 +1334,7 @@ void SetPanning (struct BoardInfo *b asm("a0"), UBYTE *addr asm("a1"), UWORD wid
 
                 RawDoFmt("[vc4] dlist[%ld] = %08lx\n", args, (APTR)putch, NULL);
             }
+#endif
         }
     }
 
