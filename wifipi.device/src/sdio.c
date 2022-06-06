@@ -436,6 +436,23 @@ void cmd(ULONG command, ULONG arg, ULONG timeout, struct WiFiBase *WiFiBase)
     }
 }
 
+UBYTE sdio_read_byte(UBYTE function, ULONG address, struct WiFiBase *WiFiBase)
+{
+    cmd(IO_RW_DIRECT, ((address & 0x1ffff) << 9) | ((function & 7) << 24), 500000, WiFiBase);
+    return WiFiBase->w_Res0;
+}
+
+void sdio_write_byte(UBYTE function, ULONG address, UBYTE value, struct WiFiBase *WiFiBase)
+{
+    cmd(IO_RW_DIRECT, value | 0x80000000 | ((address & 0x1ffff) << 9) | ((function & 7) << 24), 500000, WiFiBase);
+}
+
+UBYTE sdio_write_and_read_byte(UBYTE function, ULONG address, UBYTE value, struct WiFiBase *WiFiBase)
+{
+    cmd(IO_RW_DIRECT, value | 0x88000000 |  ((address & 0x1ffff) << 9) | ((function & 7) << 24), 500000, WiFiBase);
+    return WiFiBase->w_Res0;
+}
+
 int sdio_init(struct WiFiBase *WiFiBase)
 {
     ULONG tout;
@@ -536,23 +553,6 @@ int sdio_init(struct WiFiBase *WiFiBase)
         rd32(WiFiBase->w_SDIO, EMMC_CONTROL0),
         rd32(WiFiBase->w_SDIO, EMMC_CONTROL1)));
 
-#if 0
-    // Before resetting to idle, read/send CMD52
-	cmd(IO_RW_DIRECT, 0x00000c00, 500000, WiFiBase);
-    cmd(IO_RW_DIRECT, 0x00000c00, 500000, WiFiBase);
-	if(FAIL(WiFiBase))
-	{
-        D(bug("[WiFi] SDIO: no IO_RW_DIRECT read response\n"));
-	}
-    D(bug("[WiFi] CMD52 response %08lx\n", rd32(WiFiBase->w_SDIO, EMMC_RESP0)));
-
-	cmd(IO_RW_DIRECT, 0x80000c08, 500000, WiFiBase);
-	if(FAIL(WiFiBase))
-	{
-        D(bug("[WiFi] SDIO: no IO_RW_DIRECT write response\n"));
-	}
-    D(bug("[WiFi] CMD52 response %08lx\n", rd32(WiFiBase->w_SDIO, EMMC_RESP0)));
-#endif
 	// Send CMD0 to the card (reset to idle state)
 	cmd(GO_IDLE_STATE, 0, 500000, WiFiBase);
 	if(FAIL(WiFiBase))
@@ -631,17 +631,7 @@ int sdio_init(struct WiFiBase *WiFiBase)
     switch_clock_rate(WiFiBase->w_SDIOClock, SD_CLOCK_NORMAL, WiFiBase);
 
     delay_us(10000, WiFiBase);
-#if 0
-    // Send CMD2 to get the cards CID
-	cmd(ALL_SEND_CID, 0, 500000, WiFiBase);
-	if(FAIL(WiFiBase))
-	{
-	    D(bug("[WiFi] Error sending ALL_SEND_CID\n"));
-	    return -1;
-	}
 
-    D(bug("[WiFi] card CID: %08lx%08lx%08lx%08lx\n", WiFiBase->w_Res3, WiFiBase->w_Res2, WiFiBase->w_Res1, WiFiBase->w_Res0));
-#endif
     // Send CMD3 to enter the data state
 	cmd(SEND_RELATIVE_ADDR, 0, 500000, WiFiBase);
 	if(FAIL(WiFiBase))
@@ -659,29 +649,31 @@ int sdio_init(struct WiFiBase *WiFiBase)
     D(bug("[WiFi] Card selected, return value %08lx\n", WiFiBase->w_Res0));
 
     D(bug("[WiFi] Selecting 4bit mode\n"));
-    UBYTE cccr7;
-    cmd(IO_RW_DIRECT, 7 << 9, 500000, WiFiBase);
-    cccr7 = WiFiBase->w_Res0;
-    cccr7 |= 0x80;      // Disable card detect pullup
-    cccr7 &= ~0x07;     // Clear width bits
-    cccr7 |= 0x02;      // Select 4 bit interface
-    cmd(IO_RW_DIRECT, (7 << 9) | 0x80000000 | cccr7, 500000, WiFiBase);
+    UBYTE cccr7 = sdio_read_byte(SD_FUNC_CIA, 7, WiFiBase);
+    if (SUCCESS(WiFiBase))
+    {
+        cccr7 |= 0x80;      // Disable card detect pullup
+        cccr7 &= ~0x07;     // Clear width bits
+        cccr7 |= 0x02;      // Select 4 bit interface
+        sdio_write_byte(SD_FUNC_CIA, 7, cccr7, WiFiBase);
 
-    /* Set 4bit width in CONTROL0 register */
-    wr32(WiFiBase->w_SDIO, EMMC_CONTROL0, 2 | rd32(WiFiBase->w_SDIO, EMMC_CONTROL0));
-
-    /* Check if card supports high speed mode */
-    UBYTE cccr13;
-    cmd(IO_RW_DIRECT, 0x13 << 9, 500000, WiFiBase);
-    cccr13 = WiFiBase->w_Res0;
-    if (cccr13 & 1) {
-        D(bug("[WiFi] SDIO device reports 50MHz support, enabling it.\n"));
-        cccr13 = (cccr13 & ~0xe) | 2;
-        cmd(IO_RW_DIRECT, (0x13 << 9) | 0x80000000 | cccr13, 500000, WiFiBase);
+        /* Set 4bit width in CONTROL0 register */
+        wr32(WiFiBase->w_SDIO, EMMC_CONTROL0, 2 | rd32(WiFiBase->w_SDIO, EMMC_CONTROL0));
     }
 
-    switch_clock_rate(WiFiBase->w_SDIOClock, SD_CLOCK_HIGH, WiFiBase);
-    delay_us(10000, WiFiBase);
+
+    /* Check if card supports high speed mode */
+    UBYTE cccr13 = sdio_read_byte(SD_FUNC_CIA, 0x13, WiFiBase);
+    if (SUCCESS(WiFiBase))
+    {
+        if (cccr13 & 1) {
+            D(bug("[WiFi] SDIO device reports 50MHz support, enabling it.\n"));
+            cccr13 = (cccr13 & ~0xe) | 2;
+            sdio_write_byte(SD_FUNC_CIA, 0x13, cccr13, WiFiBase);
+            switch_clock_rate(WiFiBase->w_SDIOClock, SD_CLOCK_HIGH, WiFiBase);
+            delay_us(10000, WiFiBase);
+        }
+    }
 
 #if 1
     D(bug("[WiFi] Dumping CCCR contents:"));
@@ -689,13 +681,29 @@ int sdio_init(struct WiFiBase *WiFiBase)
     {
         if ((i & 0xf) == 0)
             bug("\n         ");
-        cmd(IO_RW_DIRECT, i << 9, 500000, WiFiBase);
-        D(bug("%02lx ", WiFiBase->w_Res0 & 0xff));
+        UBYTE v = sdio_read_byte(SD_FUNC_CIA, i, WiFiBase);
+        D(bug("%02lx ", v));
     }
     bug("\n");
 #endif
 
-    /* Card is operational, clock at 25MHz. Now it's time to upload the firmware */
+    /* Set blocksizes for function 1 and 2 to 64 and 512 bytes respectively */
+    sdio_write_byte(SD_FUNC_CIA, SDIO_FBR_ADDR(1, 0x10), 0x40, WiFiBase);    // Function 1 - backplane
+    sdio_write_byte(SD_FUNC_CIA, SDIO_FBR_ADDR(1, 0x11), 0x00, WiFiBase);
+
+    sdio_write_byte(SD_FUNC_CIA, SDIO_FBR_ADDR(2, 0x10), 0x00, WiFiBase);    // Function 2 - radio
+    sdio_write_byte(SD_FUNC_CIA, SDIO_FBR_ADDR(2, 0x11), 0x02, WiFiBase);
+
+    /* Enable backplane function */
+    D(bug("[WiFi] Enabling function 1 (backplane)\n"));
+    sdio_write_byte(SD_FUNC_CIA, 0x02, 1 << SD_FUNC_BAK, WiFiBase);
+    do {
+        D(bug("[WiFi] Waiting...\n"));
+    } while(0 == (sdio_read_byte(SD_FUNC_CIA, 0x03, WiFiBase) & (1 << SD_FUNC_BAK)));
+    D(bug("[WiFi] Backplane is up\n"));
+
+    /* Now it's time to upload the firmware */
+    
 
     return 0;
 }

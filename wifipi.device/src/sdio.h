@@ -235,6 +235,13 @@
 #define SD_RESET_DAT            (1 << 26)
 #define SD_RESET_ALL            (1 << 24)
 
+#define SD_FUNC_BUS         0
+#define SD_FUNC_CIA         0
+#define SD_FUNC_BAK         1
+#define SD_FUNC_RAD         2
+
+#define SDIO_FBR_ADDR(func, reg)    (((func) << 8) | (reg))
+
 int sdio_init(struct WiFiBase *WiFiBase);
 
 #endif /* _SDIO_H */
