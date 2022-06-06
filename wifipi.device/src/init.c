@@ -4,6 +4,8 @@
 #include <proto/devicetree.h>
 
 #include "wifipi.h"
+#include "sdio.h"
+#include "mbox.h"
 
 #define D(x) x
 
@@ -40,7 +42,11 @@ struct WiFiBase * WiFi_Init(struct WiFiBase *base asm("d0"), BPTR seglist asm("a
 
     WiFiBase->w_SegList = seglist;
     WiFiBase->w_SysBase = SysBase;
+    WiFiBase->w_UtilityBase = OpenLibrary("utility.library", 0);
     WiFiBase->w_Device.dd_Library.lib_Revision = WIFIPI_REVISION;
+    
+    WiFiBase->w_RequestOrig = AllocMem(512, MEMF_CLEAR);
+    WiFiBase->w_Request = (APTR)(((ULONG)WiFiBase->w_RequestOrig + 31) & ~31);
 
     WiFiBase->w_DeviceTreeBase = DeviceTreeBase = OpenResource("devicetree.resource");
 
@@ -117,6 +123,39 @@ struct WiFiBase * WiFi_Init(struct WiFiBase *base asm("d0"), BPTR seglist asm("a
             DT_CloseKey(key);
         }
 
+        /* Open /aliases and find out the "link" to the emmc */
+        key = DT_OpenKey("/aliases");
+        if (key)
+        {
+            CONST_STRPTR gpio_alias = DT_GetPropValue(DT_FindProperty(key, "gpio"));
+
+            DT_CloseKey(key);
+               
+            if (gpio_alias != NULL)
+            {
+                /* Open the alias and find out the MMIO VC4 physical base address */
+                key = DT_OpenKey(gpio_alias);
+                if (key) {
+                    int size_cells = 1;
+                    int address_cells = 1;
+
+                    const ULONG * siz = GetPropValueRecursive(key, "#size_cells", DeviceTreeBase);
+                    const ULONG * addr = GetPropValueRecursive(key, "#address-cells", DeviceTreeBase);
+
+                    if (siz != NULL)
+                        size_cells = *siz;
+                        
+                    if (addr != NULL)
+                        address_cells = *addr;
+
+                    const ULONG *reg = DT_GetPropValue(DT_FindProperty(key, "reg"));
+                    WiFiBase->w_GPIO = (APTR)reg[address_cells - 1];
+                    DT_CloseKey(key);
+                }
+            }               
+            DT_CloseKey(key);
+        }
+
         /* Open /soc key and learn about VC4 to CPU mapping. Use it to adjust the addresses obtained above */
         key = DT_OpenKey("/soc");
         if (key)
@@ -140,12 +179,56 @@ struct WiFiBase * WiFi_Init(struct WiFiBase *base asm("d0"), BPTR seglist asm("a
 
             WiFiBase->w_MailBox = (APTR)((ULONG)WiFiBase->w_MailBox - phys_vc4 + phys_cpu);
             WiFiBase->w_SDIO = (APTR)((ULONG)WiFiBase->w_SDIO - phys_vc4 + phys_cpu);
+            WiFiBase->w_GPIO = (APTR)((ULONG)WiFiBase->w_GPIO - phys_vc4 + phys_cpu);
 
             D(bug("[WiFi]   Mailbox at %08lx\n", (ULONG)WiFiBase->w_MailBox));
             D(bug("[WiFi]   SDIO regs at %08lx\n", (ULONG)WiFiBase->w_SDIO));
+            D(bug("[WiFi]   GPIO regs at %08lx\n", (ULONG)WiFiBase->w_GPIO));
 
             DT_CloseKey(key);
         }
+
+        D(bug("[WiFi] Configuring GPIO alternate functions\n"));
+
+        ULONG tmp = rd32(WiFiBase->w_GPIO, 0x0c);
+        tmp &= 0xfff;       // Leave data for GPIO 30..33 intact
+        tmp |= 0x3ffff000;  // GPIO 34..39 are ALT3 now
+        wr32(WiFiBase->w_GPIO, 0x0c, tmp);
+
+        D(bug("[WiFi] Enabling pull-ups \n"));
+
+        tmp = rd32(WiFiBase->w_GPIO, 0xec);
+        tmp &= 0xffff000f;  // Clear PU/PD setting for GPIO 34..39
+        tmp |= 0x00005550;  // 01 in 35..59 == pull-up
+        wr32(WiFiBase->w_GPIO, 0xec, tmp);
+
+        D(bug("[WiFi] Enable GPCLK2, 32kHz on GPIO43 and output on GPIO41\n"));
+
+        tmp = rd32(WiFiBase->w_GPIO, 0x10);
+        tmp &= ~(7 << 9);   // Clear ALT-config for GPIO43
+        tmp |= 4 << 9;      // GPIO43 to ALT0 == low speed clock
+        tmp &= ~(7 << 3);   // Clear ALT-config for GPIO41
+        tmp |= 1 << 3;      // Set GPIO41 as output
+        wr32(WiFiBase->w_GPIO, 0x10, tmp);
+
+        D(bug("[WiFi] Setting GPCLK2 to 32kHz\n"));
+        wr32((void*)0xf2101000, 0x84, 0x00249f00);
+        wr32((void*)0xf2101000, 0x80, 0x291);
+
+        D(bug("[WiFi] Enabling EMMC clock\n"));
+        ULONG clk = get_clock_state(1, WiFiBase);
+        D(bug("[WiFi] Old clock state: %lx\n", clk));
+        set_clock_state(1, 1, WiFiBase);
+        clk = get_clock_state(1, WiFiBase);
+        D(bug("[WiFi] New clock state: %lx\n", clk));
+        clk = get_clock_rate(1, WiFiBase);
+        D(bug("[WiFi] Clock speed: %ld MHz\n", clk / 1000000));
+        WiFiBase->w_SDIOClock = clk;
+
+//        D(bug("[WiFi] Setting GPIO41 to 1\n"));
+//        wr32(WiFiBase->w_GPIO, 0x20, 1 << (41 - 32));
+
+        sdio_init(WiFiBase);
     }
 
     D(bug("[WiFi] WiFi_Init done\n"));

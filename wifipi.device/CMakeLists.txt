@@ -10,6 +10,8 @@ add_executable(wifipi.device
     src/start.c
     src/device.c
     src/init.c
+    src/mbox.c
+    src/sdio.c
     src/firmware.c
     src/end.c
 )
