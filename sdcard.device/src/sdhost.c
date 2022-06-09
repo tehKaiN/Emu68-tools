@@ -202,6 +202,16 @@ void sdhost_led(int on, struct SDCardBase *SDCardBase)
     }
 }
 
+void sdhost_led_inverted(int on, struct SDCardBase *SDCardBase)
+{
+    if (on) {
+        wr32((APTR)0xf2200000, 0x28, 1 << 29);
+    }
+    else {
+        wr32((APTR)0xf2200000, 0x1c, 1 << 29);
+    }
+}
+
 static void sdhost_dump_regs(struct SDCardBase *SDCardBase)
 {
     APTR sc = SDCardBase->sd_SDHOST;

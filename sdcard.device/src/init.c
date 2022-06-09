@@ -103,6 +103,14 @@ void delay(ULONG us, struct SDCardBase *SDCardBase)
 #endif
 }
 
+int strcmp(const char *s1, const char *s2)
+{
+	while (*s1 == *s2++)
+		if (*s1++ == '\0')
+			return (0);
+	return (*(const unsigned char *)s1 - *(const unsigned char *)(s2 - 1));
+}
+
 APTR Init(struct ExecBase *SysBase asm("a6"))
 {
     struct DeviceTreeBase *DeviceTreeBase = NULL;
@@ -228,6 +236,13 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
             SumLibrary((struct Library*)SDCardBase);
 
             RawDoFmt("[brcm-sdhc] DeviceBase at %08lx\n", &SDCardBase, (APTR)putch, NULL);
+
+            const char *compatible = DT_GetPropValue(DT_FindProperty(DT_OpenKey("/"), "compatible"));
+            if (strcmp("raspberrypi,model-zero-2-w", compatible) == 0)
+            {
+                RawDoFmt("[brcm-sdhc] Zero2-W detected, inverting LED logic\n", NULL, (APTR)putch, NULL);
+                SDCardBase->sd_SetLED = (APTR)sdhost_led_inverted;
+            }
 
             const char *cmdline = DT_GetPropValue(DT_FindProperty(DT_OpenKey("/chosen"), "bootargs"));
             const char *cmd;
