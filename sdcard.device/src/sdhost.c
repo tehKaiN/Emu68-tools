@@ -162,7 +162,7 @@ int sdhost_irq()
     if (rd32((APTR)0xf3000000, 0x34) & 0x80000000)
     {
         wr32((APTR)0xf3000000, 0x38, 0x80000000);
-        RawDoFmt("EXTER from local timer!\n", NULL, (APTR)putch, NULL);
+        //RawDoFmt("EXTER from local timer!\n", NULL, (APTR)putch, NULL);
         //putch('!', NULL);
         return 1;
     }
