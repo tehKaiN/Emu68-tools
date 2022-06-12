@@ -447,10 +447,42 @@ void sdio_write_byte(UBYTE function, ULONG address, UBYTE value, struct WiFiBase
     cmd(IO_RW_DIRECT, value | 0x80000000 | ((address & 0x1ffff) << 9) | ((function & 7) << 24), 500000, WiFiBase);
 }
 
+void sdio_write_bytes(UBYTE function, ULONG address, void *data, ULONG length, struct WiFiBase *WiFiBase)
+{
+    WiFiBase->w_Buffer = data;
+    WiFiBase->w_BlockSize = length;
+    WiFiBase->w_BlocksToTransfer = 1;
+    cmd(IO_RW_EXTENDED | SD_DATA_WRITE, 0x80000000 | ((address & 0x1ffff) << 9) | ((function & 7) << 28) | (length & 0x1ff) | (1 << 26), 500000, WiFiBase);
+}
+
+void sdio_read_bytes(UBYTE function, ULONG address, void *data, ULONG length, struct WiFiBase *WiFiBase)
+{
+    WiFiBase->w_Buffer = data;
+    WiFiBase->w_BlockSize = length;
+    WiFiBase->w_BlocksToTransfer = 1;
+    cmd(IO_RW_EXTENDED | SD_DATA_READ, ((address & 0x1ffff) << 9) | ((function & 7) << 28) | (length & 0x1ff) | (1 << 26), 500000, WiFiBase);
+}
+
 UBYTE sdio_write_and_read_byte(UBYTE function, ULONG address, UBYTE value, struct WiFiBase *WiFiBase)
 {
     cmd(IO_RW_DIRECT, value | 0x88000000 |  ((address & 0x1ffff) << 9) | ((function & 7) << 24), 500000, WiFiBase);
     return WiFiBase->w_Res0;
+}
+
+void sdio_backplane_window(ULONG addr, struct WiFiBase *WiFiBase)
+{
+    static ULONG last = 0;
+
+    /* Align address properly */
+    addr = addr & ~0x7fff;
+
+    if (addr != last) {
+        last = addr;
+        addr >>= 8;
+        sdio_write_byte(SD_FUNC_BAK, 0x1000a, addr, WiFiBase);
+        sdio_write_byte(SD_FUNC_BAK, 0x1000b, addr >> 8, WiFiBase);
+        sdio_write_byte(SD_FUNC_BAK, 0x1000c, addr >> 16, WiFiBase);
+    }
 }
 
 int sdio_init(struct WiFiBase *WiFiBase)
@@ -702,8 +734,15 @@ int sdio_init(struct WiFiBase *WiFiBase)
     } while(0 == (sdio_read_byte(SD_FUNC_CIA, 0x03, WiFiBase) & (1 << SD_FUNC_BAK)));
     D(bug("[WiFi] Backplane is up\n"));
 
+    sdio_backplane_window(0x18000000, WiFiBase);
+    UBYTE id[4];
+    sdio_read_bytes(SD_FUNC_BAK, 0x8000, id, 4, WiFiBase);
+
+    D(bug("[WiFi] Chip ID: %02lx-%02lx-%02lx-%02lx\n", id[0], id[1], id[2], id[3]));
+
     /* Now it's time to upload the firmware */
-    
+
+
 
     return 0;
 }
