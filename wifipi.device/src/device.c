@@ -2,6 +2,7 @@
 #include <exec/resident.h>
 #include <exec/nodes.h>
 #include <exec/devices.h>
+#include <exec/errors.h>
 
 #include <utility/tagitem.h>
 
