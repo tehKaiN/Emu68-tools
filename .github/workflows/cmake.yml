@@ -27,9 +27,6 @@ jobs:
       run: |
         cmake -E make_directory ${{runner.workspace}}/build
         cmake -E make_directory ${{runner.workspace}}/install
-    - name: Patch includes
-      shell: bash
-      run: wget https://raw.githubusercontent.com/aros-development-team/AROS/master/compiler/include/devices/newstyle.h -O newstyle.h && wget https://dl.amigadev.com/newstyle.diff -O newstyle.diff && patch --ignore-whitespace < newstyle.diff && mv -fv newstyle.h /opt/m68k-amigaos/m68k-amigaos/ndk-include/devices/
 
     - name: Configure CMake
       # Use a bash shell so we can use the same syntax for environment variable
