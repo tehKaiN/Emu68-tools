@@ -11,5 +11,9 @@ uint32_t set_clock_state(uint32_t id, uint32_t state, struct SDCardBase * SDCard
 uint32_t get_power_state(uint32_t id, struct SDCardBase * SDCardBase);
 uint32_t set_power_state(uint32_t id, uint32_t state, struct SDCardBase * SDCardBase);
 uint32_t set_led_state(uint32_t id, uint32_t state, struct SDCardBase * SDCardBase);
+uint32_t get_extgpio_state(uint32_t id, struct SDCardBase * SDCardBase);
+uint32_t get_extgpio_state(uint32_t id, struct SDCardBase * SDCardBase);
+uint32_t set_extgpio_state(uint32_t id, uint32_t state, struct SDCardBase * SDCardBase);
+uint32_t set_sdhost_clock(uint32_t speed, struct SDCardBase * SDCardBase);
 
 #endif /* _MBOX_H */
