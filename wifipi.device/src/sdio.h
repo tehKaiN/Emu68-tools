@@ -242,6 +242,8 @@
 #define SD_FUNC_BAK         1
 #define SD_FUNC_RAD         2
 
+#include "zw_regs.h"
+
 #define SDIO_FBR_ADDR(func, reg)    (((func) << 8) | (reg))
 
 int sdio_init(struct WiFiBase *WiFiBase);

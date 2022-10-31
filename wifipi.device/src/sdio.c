@@ -438,13 +438,13 @@ void cmd(ULONG command, ULONG arg, ULONG timeout, struct WiFiBase *WiFiBase)
 
 UBYTE sdio_read_byte(UBYTE function, ULONG address, struct WiFiBase *WiFiBase)
 {
-    cmd(IO_RW_DIRECT, ((address & 0x1ffff) << 9) | ((function & 7) << 24), 500000, WiFiBase);
+    cmd(IO_RW_DIRECT, ((address & 0x1ffff) << 9) | ((function & 7) << 28), 500000, WiFiBase);
     return WiFiBase->w_Res0;
 }
 
 void sdio_write_byte(UBYTE function, ULONG address, UBYTE value, struct WiFiBase *WiFiBase)
 {
-    cmd(IO_RW_DIRECT, value | 0x80000000 | ((address & 0x1ffff) << 9) | ((function & 7) << 24), 500000, WiFiBase);
+    cmd(IO_RW_DIRECT, value | 0x80000000 | ((address & 0x1ffff) << 9) | ((function & 7) << 28), 500000, WiFiBase);
 }
 
 void sdio_write_bytes(UBYTE function, ULONG address, void *data, ULONG length, struct WiFiBase *WiFiBase)
@@ -465,7 +465,7 @@ void sdio_read_bytes(UBYTE function, ULONG address, void *data, ULONG length, st
 
 UBYTE sdio_write_and_read_byte(UBYTE function, ULONG address, UBYTE value, struct WiFiBase *WiFiBase)
 {
-    cmd(IO_RW_DIRECT, value | 0x88000000 |  ((address & 0x1ffff) << 9) | ((function & 7) << 24), 500000, WiFiBase);
+    cmd(IO_RW_DIRECT, value | 0x88000000 |  ((address & 0x1ffff) << 9) | ((function & 7) << 28), 500000, WiFiBase);
     return WiFiBase->w_Res0;
 }
 
@@ -474,15 +474,38 @@ void sdio_backplane_window(ULONG addr, struct WiFiBase *WiFiBase)
     static ULONG last = 0;
 
     /* Align address properly */
-    addr = addr & ~0x7fff;
+    addr = addr & SB_WIN_MASK;
 
     if (addr != last) {
         last = addr;
         addr >>= 8;
+
         sdio_write_byte(SD_FUNC_BAK, 0x1000a, addr, WiFiBase);
         sdio_write_byte(SD_FUNC_BAK, 0x1000b, addr >> 8, WiFiBase);
         sdio_write_byte(SD_FUNC_BAK, 0x1000c, addr >> 16, WiFiBase);
     }
+}
+
+ULONG sdio_backplane_addr(ULONG addr, struct WiFiBase *WiFiBase)
+{
+    sdio_backplane_window(addr, WiFiBase);
+    return addr & SB_ADDR_MASK;
+}
+
+void sdio_bak_write32(ULONG address, ULONG data, struct WiFiBase *WiFiBase)
+{
+    data = LE32(data);
+    address = sdio_backplane_addr(address, WiFiBase);
+
+    sdio_write_bytes(SD_FUNC_BAK, address | SB_32BIT_WIN, &data, 4, WiFiBase);
+}
+
+void sdio_bak_read32(ULONG address, ULONG *data, struct WiFiBase *WiFiBase)
+{
+    ULONG temp;
+    address = sdio_backplane_addr(address, WiFiBase);
+    sdio_read_bytes(SD_FUNC_BAK, address | SB_32BIT_WIN, &temp, 4, WiFiBase);
+    *data = LE32(temp);
 }
 
 int sdio_init(struct WiFiBase *WiFiBase)
@@ -681,27 +704,26 @@ int sdio_init(struct WiFiBase *WiFiBase)
     D(bug("[WiFi] Card selected, return value %08lx\n", WiFiBase->w_Res0));
 
     D(bug("[WiFi] Selecting 4bit mode\n"));
-    UBYTE cccr7 = sdio_read_byte(SD_FUNC_CIA, 7, WiFiBase);
+    UBYTE cccr7 = sdio_read_byte(SD_FUNC_CIA, BUS_BI_CTRL_REG, WiFiBase);
     if (SUCCESS(WiFiBase))
     {
         cccr7 |= 0x80;      // Disable card detect pullup
         cccr7 &= ~0x07;     // Clear width bits
         cccr7 |= 0x02;      // Select 4 bit interface
-        sdio_write_byte(SD_FUNC_CIA, 7, cccr7, WiFiBase);
+        sdio_write_byte(SD_FUNC_CIA, BUS_BI_CTRL_REG, cccr7, WiFiBase);
 
         /* Set 4bit width in CONTROL0 register */
         wr32(WiFiBase->w_SDIO, EMMC_CONTROL0, 2 | rd32(WiFiBase->w_SDIO, EMMC_CONTROL0));
     }
 
-
     /* Check if card supports high speed mode */
-    UBYTE cccr13 = sdio_read_byte(SD_FUNC_CIA, 0x13, WiFiBase);
+    UBYTE cccr13 = sdio_read_byte(SD_FUNC_CIA, BUS_SPEED_CTRL_REG, WiFiBase);
     if (SUCCESS(WiFiBase))
     {
         if (cccr13 & 1) {
             D(bug("[WiFi] SDIO device reports 50MHz support, enabling it.\n"));
             cccr13 = (cccr13 & ~0xe) | 2;
-            sdio_write_byte(SD_FUNC_CIA, 0x13, cccr13, WiFiBase);
+            sdio_write_byte(SD_FUNC_CIA, BUS_SPEED_CTRL_REG, cccr13, WiFiBase);
             switch_clock_rate(WiFiBase->w_SDIOClock, SD_CLOCK_HIGH, WiFiBase);
             delay_us(10000, WiFiBase);
         }
@@ -728,17 +750,98 @@ int sdio_init(struct WiFiBase *WiFiBase)
 
     /* Enable backplane function */
     D(bug("[WiFi] Enabling function 1 (backplane)\n"));
-    sdio_write_byte(SD_FUNC_CIA, 0x02, 1 << SD_FUNC_BAK, WiFiBase);
+    sdio_write_byte(SD_FUNC_CIA, BUS_IOEN_REG, 1 << SD_FUNC_BAK, WiFiBase);
     do {
         D(bug("[WiFi] Waiting...\n"));
-    } while(0 == (sdio_read_byte(SD_FUNC_CIA, 0x03, WiFiBase) & (1 << SD_FUNC_BAK)));
+    } while(0 == (sdio_read_byte(SD_FUNC_CIA, BUS_IORDY_REG, WiFiBase) & (1 << SD_FUNC_BAK)));
     D(bug("[WiFi] Backplane is up\n"));
 
-    sdio_backplane_window(0x18000000, WiFiBase);
     UBYTE id[4];
-    sdio_read_bytes(SD_FUNC_BAK, 0x8000, id, 4, WiFiBase);
+    sdio_backplane_window(BAK_BASE_ADDR, WiFiBase);
+    sdio_read_bytes(SD_FUNC_BAK, SB_32BIT_WIN, id, 4, WiFiBase);
 
     D(bug("[WiFi] Chip ID: %02lx-%02lx-%02lx-%02lx\n", id[0], id[1], id[2], id[3]));
+
+    /* Magic setup after ZeroWi project */
+    D(bug("[WiFi] ZeroWi magic...\n"));
+
+    // [18.002173] Set chip clock
+    sdio_write_byte(SD_FUNC_BAK, BAK_CHIP_CLOCK_CSR_REG, 0x28, WiFiBase);
+    UBYTE tmp = sdio_read_byte(SD_FUNC_BAK, BAK_CHIP_CLOCK_CSR_REG, WiFiBase);
+    sdio_write_byte(SD_FUNC_BAK, BAK_CHIP_CLOCK_CSR_REG, 0x21, WiFiBase);
+    
+    D(bug("[WiFi] CLOCK_CSR_REG=%02lx\n", tmp));
+
+    // [18.004850] Disable pullups
+    sdio_write_byte(SD_FUNC_BAK, BAK_PULLUP_REG, 0, WiFiBase);
+    // Get chip ID again, and config base addr [18.005201]
+    sdio_read_bytes(SD_FUNC_BAK, SB_32BIT_WIN, id, 4, WiFiBase);
+    ULONG config_base_addr;
+    sdio_read_bytes(SD_FUNC_BAK, SB_32BIT_WIN+0xfc, &config_base_addr, 4, WiFiBase);
+
+    D(bug("[WiFi] Chip ID (again): %02lx-%02lx-%02lx-%02lx\n", id[0], id[1], id[2], id[3]));
+    D(bug("[WiFi] Config base address: %08lx\n", LE32(config_base_addr)));
+
+    // Reset cores [18.030305]
+    sdio_bak_write32(ARM_IOCTRL_REG, 0x03, WiFiBase);
+    sdio_bak_write32(MAC_IOCTRL_REG, 0x07, WiFiBase);
+    sdio_bak_write32(MAC_RESETCTRL_REG, 0x00, WiFiBase);
+    sdio_bak_write32(MAC_IOCTRL_REG, 0x05, WiFiBase);
+    // [18.032572]
+    sdio_bak_write32(SRAM_IOCTRL_REG, 0x03, WiFiBase);
+    sdio_bak_write32(SRAM_RESETCTRL_REG, 0x00, WiFiBase);
+    sdio_bak_write32(SRAM_IOCTRL_REG, 0x01, WiFiBase);
+
+    ULONG tmp32 = 0xdeadbeef;
+    sdio_bak_read32(SRAM_IOCTRL_REG, &tmp32, WiFiBase);
+    D(bug("[WiFi] SRAM IOCTRL REG=%08x\n", tmp32));
+
+    // [18.034039]
+    sdio_bak_write32(SRAM_BANKX_IDX_REG, 0x03, WiFiBase);
+    sdio_bak_write32(SRAM_BANKX_PDA_REG, 0x00, WiFiBase);
+
+    sdio_bak_read32(SRAM_IOCTRL_REG, &tmp32, WiFiBase);
+    if (tmp32 != 1)
+        D(bug("[WiFi] SRAM IOCTRL REG=%08x but should be 0x00000001\n", tmp32));
+    else
+        D(bug("[WiFi] SRAM IOCTRL REG=%08x\n", tmp32));
+
+    sdio_bak_read32(SRAM_RESETCTRL_REG, &tmp32, WiFiBase);
+    if (tmp32 != 0)
+        D(bug("[WiFi] SRAM RESETCTRL REG=%08x but should be 0x00000000\n", tmp32));
+    else
+        D(bug("[WiFi] SRAM RESETCTRL REG=%08x\n", tmp32));
+
+    // [18.035416]
+    sdio_bak_read32(SRAM_BASE_ADDR, &tmp32, WiFiBase);
+    D(bug("[WiFi] SRAM BASE ADDR=%08x\n", tmp32));
+    sdio_bak_write32(SRAM_BANKX_IDX_REG, 0, WiFiBase);
+    sdio_bak_read32(SRAM_UNKNOWN_REG, &tmp32, WiFiBase);
+    D(bug("[WiFi] SRAM UNKNOWN REG=%08x for IDX 0\n", tmp32));
+    sdio_bak_write32(SRAM_BANKX_IDX_REG, 1, WiFiBase);
+    sdio_bak_read32(SRAM_UNKNOWN_REG, &tmp32, WiFiBase);
+    D(bug("[WiFi] SRAM UNKNOWN REG=%08x for IDX 1\n", tmp32));
+    sdio_bak_write32(SRAM_BANKX_IDX_REG, 2, WiFiBase);
+    sdio_bak_read32(SRAM_UNKNOWN_REG, &tmp32, WiFiBase);
+    D(bug("[WiFi] SRAM UNKNOWN REG=%08x for IDX 2\n", tmp32));
+    sdio_bak_write32(SRAM_BANKX_IDX_REG, 3, WiFiBase);
+    
+    #if 0
+    // [18.037502]
+    if (!sdio_cmd52_reads_check(SD_FUNC_BUS, 0x00f1, 0xff, 1, 1))
+        disp_log_break();
+    sdio_cmd52_writes(SD_FUNC_BUS, 0x00f1, 3, 1);
+    sdio_cmd53_read(SD_FUNC_BAK, 0x8600, u32d.bytes, 4);
+    u32d.bytes[1] |= 0x40;
+    sdio_cmd53_write(SD_FUNC_BAK, 0x8600, u32d.bytes, 4);
+    // [18.052762]
+    sdio_cmd52_writes(SD_FUNC_BUS, BUS_IOEN_REG, 1<<SD_FUNC_BAK, 1);
+    sdio_cmd52_writes(SD_FUNC_BAK, BAK_CHIP_CLOCK_CSR_REG, 0, 1);
+    usdelay(45000);
+    sdio_cmd52_writes(SD_FUNC_BAK, BAK_CHIP_CLOCK_CSR_REG, 8, 1);
+    if (!sdio_cmd52_reads_check(SD_FUNC_BAK, BAK_CHIP_CLOCK_CSR_REG, 0xff, 0x48, 1))
+        disp_log_break();
+    #endif
 
     /* Now it's time to upload the firmware */
 
