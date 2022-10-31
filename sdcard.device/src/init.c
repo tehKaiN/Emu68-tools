@@ -59,6 +59,12 @@
 extern const char deviceName[];
 extern const char deviceIdString[];
 
+void kprintf(const char * msg asm("a0"), void * args asm("a1")) 
+{
+    struct ExecBase *SysBase = *(struct ExecBase **)4UL;
+    RawDoFmt(msg, args, (APTR)putch, NULL);
+}
+
 /*
     Some properties, like e.g. #size-cells, are not always available in a key, but in that case the properties
     should be searched for in the parent. The process repeats recursively until either root key is found
@@ -85,6 +91,7 @@ CONST_APTR GetPropValueRecursive(APTR key, CONST_STRPTR property, APTR DeviceTre
 
 void delay(ULONG us, struct SDCardBase *SDCardBase)
 {
+#if 1
     ULONG timer = LE32(*(volatile ULONG*)0xf2003004);
     ULONG end = timer + us;
 
@@ -92,7 +99,7 @@ void delay(ULONG us, struct SDCardBase *SDCardBase)
         while (end < LE32(*(volatile ULONG*)0xf2003004)) asm volatile("nop");
     }
     while (end > LE32(*(volatile ULONG*)0xf2003004)) asm volatile("nop");
-#if 0
+#else
     struct ExecBase *SysBase = SDCardBase->sd_SysBase;
     SDCardBase->sd_Port.mp_SigTask = FindTask(NULL);
     SDCardBase->sd_TimeReq.tr_time.tv_micro = us % 1000000;
@@ -118,7 +125,7 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
     struct SDCardBase *SDCardBase = NULL;
     struct CurrentBinding binding;
 
-    RawDoFmt("[brcm-sdhc] Init\n", NULL, (APTR)putch, NULL);
+    bug("[brcm-sdhc] Init\n");
 
     DeviceTreeBase = OpenResource("devicetree.resource");
 
@@ -235,12 +242,12 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
 
             SumLibrary((struct Library*)SDCardBase);
 
-            RawDoFmt("[brcm-sdhc] DeviceBase at %08lx\n", &SDCardBase, (APTR)putch, NULL);
+            bug("[brcm-sdhc] DeviceBase at %08lx\n", (ULONG)SDCardBase);
 
             const char *compatible = DT_GetPropValue(DT_FindProperty(DT_OpenKey("/"), "compatible"));
             if (strcmp("raspberrypi,model-zero-2-w", compatible) == 0)
             {
-                RawDoFmt("[brcm-sdhc] Zero2-W detected, inverting LED logic\n", NULL, (APTR)putch, NULL);
+                bug("[brcm-sdhc] Zero2-W detected, inverting LED logic\n");
                 SDCardBase->sd_SetLED = (APTR)sdhost_led_inverted;
             }
 
@@ -265,7 +272,7 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                 if (verbose > 10)
                     verbose = 10;
 
-                RawDoFmt("[brcm-sdhc] Requested verbosity level: %ld\n", &verbose, (APTR)putch, NULL);
+                bug("[brcm-sdhc] Requested verbosity level: %ld\n", verbose);
 
                 SDCardBase->sd_Verbose = (UBYTE)verbose;
             }
@@ -275,22 +282,22 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                 if (cmd[9] == 'r' && cmd[10] == 'o' && (cmd[11] == 0 || cmd[11] == ' ')) {
                     SDCardBase->sd_ReadOnlyUnit0 = 1;
                     SDCardBase->sd_HideUnit0 = 0;
-                    RawDoFmt("[brcm-sdhc] Unit 0 is read only\n", NULL, (APTR)putch, NULL);
+                    bug("[brcm-sdhc] Unit 0 is read only\n");
                 }
                 else if (cmd[9] == 'r' && cmd[10] == 'w' && (cmd[11] == 0 || cmd[11] == ' ')) {
                     SDCardBase->sd_ReadOnlyUnit0 = 0;
                     SDCardBase->sd_HideUnit0 = 0;
-                    RawDoFmt("[brcm-sdhc] Unit 0 is writable\n", NULL, (APTR)putch, NULL);
+                    bug("[brcm-sdhc] Unit 0 is writable\n");
                 }
                 else if (cmd[9] == 'o' && cmd[10] == 'f' && cmd[11] == 'f' && (cmd[12] == 0 || cmd[12] == ' ')) {
                     SDCardBase->sd_HideUnit0 = 1;
-                    RawDoFmt("[brcm-sdhc] Unit 0 is hidden\n", NULL, (APTR)putch, NULL);
+                    bug("[brcm-sdhc] Unit 0 is hidden\n");
                 }
             }
 
             if (FindToken(cmdline, "sd.low_speed"))
             {
-                RawDoFmt("[brcm-sdhc] 50MHz mode disabled per command line\n", NULL, (APTR)putch, NULL);
+                bug("[brcm-sdhc] 50MHz mode disabled per command line\n");
 
                 SDCardBase->sd_DisableHighSpeed = 1;
             }
@@ -309,14 +316,14 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
 
                 if (clock > 0 && clock < 200)
                 {
-                    RawDoFmt("[brcm-sdhc] Overclocking to %ld MHz requested\n", &clock, (APTR)putch, NULL);
+                    bug("[brcm-sdhc] Overclocking to %ld MHz requested\n", clock);
                     SDCardBase->sd_Overclock = 1000000 * clock;
                 }
             }
 
             if (FindToken(cmdline, "sd.disable"))
             {
-                RawDoFmt("[brcm-sdhc] brcm-sdhc.device disabled by user\n", NULL, (APTR)putch, NULL);
+                bug("[brcm-sdhc] brcm-sdhc.device disabled by user\n");
 
                 disabled = 1;
             }
@@ -429,29 +436,34 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
             {
                 int size_cells = 1;
                 int address_cells = 1;
+                int cpu_address_cells = 1;
 
                 const ULONG * siz = GetPropValueRecursive(key, "#size_cells", DeviceTreeBase);
                 const ULONG * addr = GetPropValueRecursive(key, "#address-cells", DeviceTreeBase);
-
+                const ULONG * cpu_addr = DT_GetPropValue(DT_FindProperty(DT_OpenKey("/"), "#address-cells"));
+            
                 if (siz != NULL)
                     size_cells = *siz;
                 
                 if (addr != NULL)
                     address_cells = *addr;
 
+                if (cpu_addr != NULL)
+                    cpu_address_cells = *cpu_addr;
+
                 const ULONG *reg = DT_GetPropValue(DT_FindProperty(key, "ranges"));
 
                 ULONG phys_vc4 = reg[address_cells - 1];
-                ULONG phys_cpu = reg[2 * address_cells - 1];
+                ULONG phys_cpu = reg[address_cells + cpu_address_cells - 1];
 
                 SDCardBase->sd_MailBox = (APTR)((ULONG)SDCardBase->sd_MailBox - phys_vc4 + phys_cpu);
                 SDCardBase->sd_SDHC = (APTR)((ULONG)SDCardBase->sd_SDHC - phys_vc4 + phys_cpu);
                 SDCardBase->sd_SDHOST = (APTR)((ULONG)SDCardBase->sd_SDHOST - phys_vc4 + phys_cpu);
 
                 if (SDCardBase->sd_Verbose > 0) {
-                    RawDoFmt("[brcm-sdhc] Mailbox at %08lx\n", &SDCardBase->sd_MailBox, (APTR)putch, NULL);
-                    RawDoFmt("[brcm-sdhc] SDHC regs at %08lx\n", &SDCardBase->sd_SDHC, (APTR)putch, NULL);
-                    RawDoFmt("[brcm-sdhc] SDHOST regs at %08lx\n", &SDCardBase->sd_SDHOST, (APTR)putch, NULL);
+                    bug("[brcm-sdhc] Mailbox at %08lx\n", (ULONG)SDCardBase->sd_MailBox);
+                    bug("[brcm-sdhc] SDHC regs at %08lx\n", (ULONG)SDCardBase->sd_SDHC);
+                    bug("[brcm-sdhc] SDHOST regs at %08lx\n", (ULONG)SDCardBase->sd_SDHOST);
                 }
 
                 DT_CloseKey(key);
@@ -484,7 +496,6 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                 tmp |= 1 << 27;
                 wr32((APTR)0xf2200000, 0x08, tmp);
 
-
                 /* Enable EMMC/SDHOST clock */
                 SDCardBase->set_clock_state(1, 1, SDCardBase);
 
@@ -495,7 +506,7 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                     /* Initializataion was successful. Read parition table and create the units */
 
                     if (SDCardBase->sd_Verbose) {
-                        RawDoFmt("[brcm-sdhc] Attempting to read card capacity\n", NULL, (APTR)putch, NULL);
+                        bug("[brcm-sdhc] Attempting to read card capacity\n");
                     }
                     SDCardBase->sd_CMD(DESELECT_CARD, 0, 1000000, SDCardBase);
                     SDCardBase->sd_CMD(SEND_CSD, SDCardBase->sd_CardRCA << 16, 1000000, SDCardBase);
@@ -509,21 +520,17 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                         SDCardBase->sd_Units[0]->su_UnitNum = 0;
 
                         if (SDCardBase->sd_Verbose) {
-                            ULONG args[] = {
-                                SDCardBase->sd_Units[0]->su_BlockCount / 2048,
-                                SDCardBase->sd_Units[0]->su_BlockCount
-                            };
-
-                            RawDoFmt("[brcm-sdhc] Reported card capacity: %ld MB (%ld sectors)\n", args, (APTR)putch, NULL);
+                            bug("[brcm-sdhc] Reported card capacity: %ld MB (%ld sectors)\n", SDCardBase->sd_Units[0]->su_BlockCount / 2048,
+                                SDCardBase->sd_Units[0]->su_BlockCount);
                         }
 
                         if (SDCardBase->sd_Verbose > 1)
-                            RawDoFmt("[brcm-sdhc] Attempting to read block at 0\n", NULL, (APTR)putch, NULL);
+                            bug("[brcm-sdhc] Attempting to read block at 0\n");
                         
                         ULONG ret = SDCardBase->sd_Read(buff, 512, 0, SDCardBase);
                         
                         if (SDCardBase->sd_Verbose > 1)
-                            RawDoFmt("[brcm-sdhc] Result %ld\n", &ret, (APTR)putch, NULL);
+                            bug("[brcm-sdhc] Result %ld\n", ret);
 
                         if (ret > 0)
                         {
