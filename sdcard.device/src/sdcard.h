@@ -421,6 +421,7 @@ static inline void putch(UBYTE data asm("d0"), APTR ignore asm("a3"))
     *(UBYTE*)0xdeadbeef = data;
 }
 
+void kprintf(const char * msg asm("a0"), void * args asm("a1"));
 ULONG SD_Expunge(struct SDCardBase * SDCardBase asm("a6"));
 APTR SD_ExtFunc(struct SDCardBase * SDCardBase asm("a6"));
 void SD_Open(struct IORequest * io asm("a1"), LONG unitNumber asm("d0"), ULONG flags asm("d1"));
@@ -428,4 +429,7 @@ ULONG SD_Close(struct IORequest * io asm("a1"));
 void SD_BeginIO(struct IORequest *io asm("a1"));
 LONG SD_AbortIO(struct IORequest *io asm("a1"));
 
+#define bug(string, ...) \
+    do { ULONG args[] = {0, __VA_ARGS__}; kprintf(string, &args[1]); } while(0)
+    
 #endif /* _SDCARD_H */
