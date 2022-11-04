@@ -25,7 +25,7 @@ SECTIONS
 
         LONG(((_type << 24) | (_type << 12)) & 0xf000f000)      /* er_Type */
         LONG(~((_pID << 24) | (_pID << 12)) & 0xf000f000)       /* er_Product */
-        LONG(~((_flags << 24) | (_flags << 12)) & 0xf000f000)  /* er_Flags */
+        LONG(~((_flags << 24) | (_flags << 12)) & 0xf000f000)   /* er_Flags */
         LONG(0xf000f000)                                        /* er_Reserved03 */
 
         _mIDh = (_mID >> 8) & 0xff; _mIDl = (_mID) & 0xff;

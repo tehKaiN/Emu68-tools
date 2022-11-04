@@ -183,8 +183,8 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
         AddResource(DeviceTreeBase);
 
         /* Add non-autoconfig memory to the system */
-        //void (*fun)(struct ExecBase *, APTR) = (APTR)((ULONG)Add_DT_Memory + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
-        //fun(SysBase, DeviceTreeBase);
+        void (*fun)(struct ExecBase *, APTR) = (APTR)((ULONG)Add_DT_Memory + (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+        fun(SysBase, DeviceTreeBase);
 
         binding.cb_ConfigDev->cd_Flags &= ~CDF_CONFIGME;
         binding.cb_ConfigDev->cd_Driver = DeviceTreeBase;
