@@ -44,11 +44,11 @@ struct DeviceTreeBase {
 extern const char deviceName[];
 extern const char deviceIdString[];
 
-#define BASE_NEG_SIZE (9 * 6)
+#define BASE_NEG_SIZE (10 * 6)
 #define BASE_POS_SIZE ((sizeof(struct DeviceTreeBase)))
 #define DT_PRIORITY     120
 #define DT_VERSION      1
-#define DT_REVISION     3
+#define DT_REVISION     4
 
 
 static inline int dt_strcmp(const char *s1, const char *s2)
