@@ -13,6 +13,7 @@ add_subdirectory(SmallPT)
 add_subdirectory(Buddhabrot)
 add_subdirectory(VC4Tweak)
 add_subdirectory(wifipi.device)
+add_subdirectory(emmc.device)
 
 # Contribs
 add_subdirectory(Emu68Contribs/Emu68Info)
