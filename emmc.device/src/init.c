@@ -316,9 +316,6 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                             if (addr != NULL)
                                 address_cells = *addr;
 
-                            bug("#size-cells = %lx %ld\n", siz, *siz);
-                            bug("#address-cells = %lx %ld\n", addr, *addr);
-
                             const ULONG *reg = DT_GetPropValue(DT_FindProperty(key, "reg"));
                             EMMCBase->emmc_Regs = (APTR)reg[address_cells - 1];
                             DT_CloseKey(key);
@@ -370,6 +367,12 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
             if (EMMCBase->emmc_MailBox != NULL && EMMCBase->emmc_Regs != NULL && disabled == 0)
             {
                 AddDevice((struct Device *)EMMCBase);
+
+                /* Enable eMMC clock */
+                set_clock_state(0x0c, 1, EMMCBase);
+                set_clock_state(1, 1, EMMCBase);
+
+                emmc_card_init(EMMCBase);
 
                 binding.cb_ConfigDev->cd_Flags &= ~CDF_CONFIGME;
                 binding.cb_ConfigDev->cd_Driver = EMMCBase;

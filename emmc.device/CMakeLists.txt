@@ -17,6 +17,8 @@ add_executable(brcm-emmc.device
     src/extfunc.c
     src/open.c
     src/findtoken.c
+    src/mbox.c
+    src/emmc.c
 )
 
 add_custom_command(
