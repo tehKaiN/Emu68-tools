@@ -20,6 +20,16 @@ int emmc_power_cycle(struct EMMCBase *EMMCBase)
     return set_power_state(0, 3, EMMCBase);
 }
 
+void led(int on, struct EMMCBase *EMMCBase)
+{
+    if (on) {
+        wr32((APTR)0xf2200000, 0x20, 1 << 10);
+    }
+    else {
+        wr32((APTR)0xf2200000, 0x2c, 1 << 10);
+    }
+}
+
 void cmd_int(ULONG cmd, ULONG arg, ULONG timeout, struct EMMCBase *EMMCBase)
 {
     struct ExecBase *SysBase = EMMCBase->emmc_SysBase;
@@ -639,8 +649,8 @@ int emmc_card_init(struct EMMCBase *EMMCBase)
     wr32(EMMCBase->emmc_Regs, EMMC_CONTROL2, 0);
 
     // Set eMMC clock to 200MHz
-    set_clock_rate(12, 200000000, EMMCBase);
-    set_clock_rate(1, 200000000, EMMCBase);
+    set_clock_rate(12, 250000000, EMMCBase);
+    set_clock_rate(1, 250000000, EMMCBase);
 
     // Get the base clock rate
     uint32_t base_clock = get_clock_rate(12, EMMCBase);
@@ -753,7 +763,7 @@ int emmc_card_init(struct EMMCBase *EMMCBase)
     bug("[brcm-emmc] card CID: %08lx%08lx%08lx%08lx\n", card_cid_3, card_cid_2, card_cid_1, card_cid_0);
 
 	// Send CMD3 to enter the data state
-	emmc_cmd(SEND_RELATIVE_ADDR, 0x00020000, 500000, EMMCBase);
+	emmc_cmd(SEND_RELATIVE_ADDR, 0x00010000, 500000, EMMCBase);
 	if(FAIL(EMMCBase))
     {
         bug("[brcm-emmc] Error sending SEND_RELATIVE_ADDR\n");
@@ -762,7 +772,7 @@ int emmc_card_init(struct EMMCBase *EMMCBase)
 
 	uint32_t cmd3_resp = EMMCBase->emmc_Res0;
 
-	EMMCBase->emmc_CardRCA = 2;
+	EMMCBase->emmc_CardRCA = 1;
 	uint32_t crc_error = (cmd3_resp >> 15) & 0x1;
 	uint32_t illegal_cmd = (cmd3_resp >> 14) & 0x1;
 	uint32_t error = (cmd3_resp >> 13) & 0x1;
@@ -814,7 +824,252 @@ int emmc_card_init(struct EMMCBase *EMMCBase)
 		return -1;
 	}
 
-    bug("[brcm-emmc] Res0: %08lx\n", cmd7_resp);
+    bug("[brcm-emmc] Res0: %08lx\n", EMMCBase->emmc_Res0);
+
+    // Set high-speed compatible mode
+	emmc_cmd(SWITCH, (185 << 16) | (1 << 8) | (3 << 24), 500000, EMMCBase);
+	if(FAIL(EMMCBase))
+	{
+	    bug("[brcm-emmc] Error sending CMD6\n");
+	    return -1;
+	}
+    bug("[brcm-emmc] Res0: %08lx\n", EMMCBase->emmc_Res0);
+    emmc_switch_clock_rate(base_clock, EMMC_CLOCK_HIGH, EMMCBase);
+    control0 = rd32(EMMCBase->emmc_Regs, EMMC_CONTROL0);
+    control0 |= 0x4;
+    wr32(EMMCBase->emmc_Regs, EMMC_CONTROL0, control0);
+    bug("[brcm-emmc] Clock set to %ld kHz\n", EMMC_CLOCK_HIGH / 1000);
+
+	emmc_cmd(SEND_STATUS, EMMCBase->emmc_CardRCA << 16, 500000, EMMCBase);
+	if(FAIL(EMMCBase))
+	{
+	    bug("[brcm-emmc] Error sending CMD13\n");
+	    return -1;
+	}
+    bug("[brcm-emmc] Res0: %08lx\n", EMMCBase->emmc_Res0);
+
+
+    bug("[brcm-emmc] Switching to 8-bit data mode\n");
+
+    // Disable card interrupt in host
+    uint32_t old_irpt_mask = rd32(EMMCBase->emmc_Regs, EMMC_IRPT_MASK);
+    uint32_t new_iprt_mask = old_irpt_mask & ~(1 << 8);
+    wr32(EMMCBase->emmc_Regs, EMMC_IRPT_MASK, new_iprt_mask);
+
+    emmc_cmd(SWITCH, (183 << 16) | (2 << 8) | (3 << 24), 500000, EMMCBase);
+    if(FAIL(EMMCBase))
+        bug("[brcm-emmc] switch to 8-bit data mode failed\n");
+    else
+    {
+        // Change bit mode for Host
+        uint32_t control0 = rd32(EMMCBase->emmc_Regs, EMMC_CONTROL0);
+        control0 |= 0x2 | (1 << 5);
+        wr32(EMMCBase->emmc_Regs, EMMC_CONTROL0, control0);
+
+        // Re-enable card interrupt in host
+        wr32(EMMCBase->emmc_Regs, EMMC_IRPT_MASK, old_irpt_mask);
+
+        bug("[brcm-emmc] switch to 8-bit data mode complete\n");
+    }
+
+	// Reset interrupt register
+	wr32(EMMCBase->emmc_Regs, EMMC_INTERRUPT, 0xffffffff);
+
+    // Set block size
+    EMMCBase->emmc_BlockSize = 512;
+    emmc_cmd(SET_BLOCKLEN, 512, 500000, EMMCBase);
+    if(FAIL(EMMCBase))
+    {
+        bug("[brcm-emmc] error sending SET_BLOCKLEN\n", NULL);
+        return -1;
+    }
 
     return 0;
+}
+
+
+int ensure_data_mode(struct EMMCBase *EMMCBase)
+{
+    struct ExecBase *SysBase = EMMCBase->emmc_SysBase;
+
+	if(EMMCBase->emmc_CardRCA == 0)
+	{
+		// Try again to initialise the card
+		int ret = emmc_card_init(EMMCBase);
+		if(ret != 0)
+			return ret;
+	}
+
+    emmc_cmd(SEND_STATUS, EMMCBase->emmc_CardRCA << 16, 500000, EMMCBase);
+    if(FAIL(EMMCBase))
+    {
+        bug("[brcm-emmc] ensure_data_mode() error sending CMD13\n");
+        EMMCBase->emmc_CardRCA = 0;
+        return -1;
+    }
+
+	uint32_t status = EMMCBase->emmc_Res0;
+	uint32_t cur_state = (status >> 9) & 0xf;
+
+	if(cur_state == 3)
+	{
+		// Currently in the stand-by state - select it
+		emmc_cmd(SELECT_CARD, EMMCBase->emmc_CardRCA << 16, 500000, EMMCBase);
+		if(FAIL(EMMCBase))
+		{
+			bug("[brcm-emmc] ensure_data_mode() no response from CMD7\n");
+			EMMCBase->emmc_CardRCA = 0;
+			return -1;
+		}
+	}
+	else if(cur_state == 5)
+	{
+		// In the data transfer state - cancel the transmission
+		emmc_cmd(STOP_TRANSMISSION, 0, 500000, EMMCBase);
+		if(FAIL(EMMCBase))
+		{
+			bug("[brcm-emmc] ensure_data_mode() no response from CMD12\n");
+			EMMCBase->emmc_CardRCA = 0;
+			return -1;
+		}
+
+		// Reset the data circuit
+		emmc_reset_dat(EMMCBase);
+	}
+	else if(cur_state != 4)
+	{
+		// Not in the transfer state - re-initialise
+		int ret = emmc_card_init(EMMCBase);
+		if(ret != 0)
+			return ret;
+	}
+
+	// Check again that we're now in the correct mode
+	if(cur_state != 4)
+	{
+		bug("[brcm-emmc] ensure_data_mode() rechecking status: ");
+        emmc_cmd(SEND_STATUS, EMMCBase->emmc_CardRCA << 16, 500000, EMMCBase);
+        if(FAIL(EMMCBase))
+		{
+			bug("no response from CMD13\n");
+			EMMCBase->emmc_CardRCA = 0;
+			return -1;
+		}
+		status = EMMCBase->emmc_Res0;
+		cur_state = (status >> 9) & 0xf;
+
+		bug("%ld\n", cur_state);
+
+		if(cur_state != 4)
+		{
+			bug("[brcm-emmc] unable to initialise SD card to "
+					"data mode (state %ld)\n", cur_state);
+			EMMCBase->emmc_CardRCA = 0;
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+static int emmc_do_data_command(int is_write, uint8_t *buf, uint32_t buf_size, uint32_t block_no, struct EMMCBase *EMMCBase)
+{
+    struct ExecBase *SysBase = EMMCBase->emmc_SysBase;
+
+	// This is as per HCSS 3.7.2.1
+	if(buf_size < EMMCBase->emmc_BlockSize)
+	{
+        bug("[brcm-emmc] do_data_command() called with buffer size (%ld) less than "
+            "block size (%ld)\n", buf_size, EMMCBase->emmc_BlockSize);
+        return -1;
+	}
+
+	EMMCBase->emmc_BlocksToTransfer = buf_size / EMMCBase->emmc_BlockSize;
+	if(buf_size % EMMCBase->emmc_BlockSize)
+	{
+        bug("[brcm-emmc] do_data_command() called with buffer size (%ld) not an "
+            "exact multiple of block size (%ld)\n", buf_size, EMMCBase->emmc_BlockSize);
+        return -1;
+	}
+	EMMCBase->emmc_Buffer = buf;
+
+	// Decide on the command to use
+	int command;
+	if(is_write)
+	{
+	    if(EMMCBase->emmc_BlocksToTransfer > 1)
+            command = WRITE_MULTIPLE_BLOCK;
+        else
+            command = WRITE_BLOCK;
+	}
+	else
+    {
+        if(EMMCBase->emmc_BlocksToTransfer > 1)
+            command = READ_MULTIPLE_BLOCK;
+        else
+            command = READ_SINGLE_BLOCK;
+    }
+
+	int retry_count = 0;
+	int max_retries = 5;
+	while(retry_count < max_retries)
+	{
+        emmc_cmd(command, block_no, 5000000, EMMCBase);
+
+        if(SUCCESS(EMMCBase))
+            break;
+        else
+        {
+            // In the data transfer state - cancel the transmission
+            emmc_cmd(STOP_TRANSMISSION, 0, 500000, EMMCBase);
+            if(FAIL(EMMCBase))
+            {
+                EMMCBase->emmc_CardRCA = 0;
+                return -1;
+            }
+
+            // Reset the data circuit
+            emmc_reset_dat(EMMCBase);
+            //RawDoFmt("SD: error sending CMD%ld, ", &command, (APTR)putch, NULL);
+            //RawDoFmt("error = %08lx.  ", &SDCardBase->sd_LastError, (APTR)putch, NULL);
+            retry_count++;
+            /*
+            if(retry_count < max_retries)
+                RawDoFmt("Retrying...\n", NULL, (APTR)putch, NULL);
+            else
+                RawDoFmt("Giving up.\n", NULL, (APTR)putch, NULL);
+            */
+        }
+	}
+	if(retry_count == max_retries)
+    {
+        EMMCBase->emmc_CardRCA = 0;
+        return -1;
+    }
+
+    return 0;
+}
+
+int emmc_read(uint8_t *buf, uint32_t buf_size, uint32_t block_no, struct EMMCBase *EMMCBase)
+{
+	// Check the status of the card
+    if(ensure_data_mode(EMMCBase) != 0)
+        return -1;
+
+    if(emmc_do_data_command(0, buf, buf_size, block_no, EMMCBase) < 0)
+        return -1;
+
+	return buf_size;
+}
+
+int emmc_write(uint8_t *buf, uint32_t buf_size, uint32_t block_no, struct EMMCBase *EMMCBase)
+{
+	// Check the status of the card
+    if(ensure_data_mode(EMMCBase) != 0)
+        return -1;
+
+    if(emmc_do_data_command(1, buf, buf_size, block_no, EMMCBase) < 0)
+        return -1;
+
+	return buf_size;
 }

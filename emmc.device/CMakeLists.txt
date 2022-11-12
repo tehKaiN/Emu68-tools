@@ -12,6 +12,7 @@ add_executable(brcm-emmc.device
     src/main.c
     src/init.c
     src/abortio.c
+    src/beginio.c
     src/close.c
     src/expunge.c
     src/extfunc.c
@@ -19,6 +20,7 @@ add_executable(brcm-emmc.device
     src/findtoken.c
     src/mbox.c
     src/emmc.c
+    src/unittask.c
 )
 
 add_custom_command(

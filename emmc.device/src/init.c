@@ -102,7 +102,7 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
             relFuncTable[1] = (ULONG)&EMMC_Close;
             relFuncTable[2] = (ULONG)&EMMC_Expunge;
             relFuncTable[3] = (ULONG)&EMMC_ExtFunc;
-            //relFuncTable[4] = (ULONG)&EMMC_BeginIO;
+            relFuncTable[4] = (ULONG)&EMMC_BeginIO;
             relFuncTable[5] = (ULONG)&EMMC_AbortIO;
             relFuncTable[6] = (ULONG)-1;
 
@@ -372,7 +372,122 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                 set_clock_state(0x0c, 1, EMMCBase);
                 set_clock_state(1, 1, EMMCBase);
 
-                emmc_card_init(EMMCBase);
+                if (emmc_card_init(EMMCBase) == 0)
+                {
+                    uint8_t buff[512];
+                    /* Initializataion was successful. Read parition table and create the units */
+
+                    if (EMMCBase->emmc_Verbose)
+                    {
+                        bug("[brcm-emmc] Attempting to read card capacity\n");
+                    }
+                    EMMCBase->emmc_Buffer = buff;
+                    EMMCBase->emmc_BlocksToTransfer = 1;
+                    emmc_cmd(SEND_EXT_CSD, 0, 500000, EMMCBase);
+
+                    if(!FAIL(EMMCBase))
+                    {
+                        ULONG block_count = LE32(*(ULONG*)(APTR)&buff[212]);
+                        EMMCBase->emmc_UnitCount = 1;
+                        EMMCBase->emmc_Units[0] = AllocMem(sizeof(struct EMMCUnit), MEMF_PUBLIC | MEMF_CLEAR);
+                        EMMCBase->emmc_Units[0]->su_StartBlock = 0;
+                        EMMCBase->emmc_Units[0]->su_BlockCount = block_count;
+                        EMMCBase->emmc_Units[0]->su_Base = EMMCBase;
+                        EMMCBase->emmc_Units[0]->su_UnitNum = 0;
+
+                        if (EMMCBase->emmc_Verbose) {
+                            bug("[brcm-emmc] Reported card capacity: %ld MB (%ld sectors)\n", EMMCBase->emmc_Units[0]->su_BlockCount / 2048,
+                                EMMCBase->emmc_Units[0]->su_BlockCount);
+                        }
+
+                        if (EMMCBase->emmc_Verbose > 1)
+                            bug("[brcm-emmc] Attempting to read block at 0\n");
+                        
+                        ULONG ret = emmc_read(buff, 512, 0, EMMCBase);
+                        
+                        if (EMMCBase->emmc_Verbose > 1)
+                            bug("[brcm-emmc] Result %ld\n", ret);
+
+                        if (ret > 0)
+                        {
+                            for (int i=0; i < 4; i++) {
+                                uint8_t *b = &buff[0x1be + 16 * i];
+                                ULONG p0_Type = b[4];
+                                ULONG p0_Start = b[8] | (b[9] << 8) | (b[10] << 16) | (b[11] << 24);
+                                ULONG p0_Len = b[12] | (b[13] << 8) | (b[14] << 16) | (b[15] << 24);
+
+                                // Partition does exist. List it.
+                                if (p0_Type != 0) {
+                                    if (EMMCBase->emmc_Verbose) {
+                                        bug("[brcm-emmc] Partition%ld: type 0x%02lx, start 0x%08lx, length 0x%08lx\n", i, p0_Type, p0_Start, p0_Len);
+                                    }
+
+                                    // Partition type 0x76 (Amithlon-like) creates new virtual unit with given capacity
+                                    if (p0_Type == 0x76) {
+                                        //emmc_write(0x20000000, 0x20000, p0_Start, EMMCBase);
+                                        struct EMMCUnit *unit = AllocMem(sizeof(struct EMMCUnit), MEMF_PUBLIC | MEMF_CLEAR);
+                                        unit->su_StartBlock = p0_Start;
+                                        unit->su_BlockCount = p0_Len;
+                                        unit->su_Base = EMMCBase;
+                                        unit->su_UnitNum = EMMCBase->emmc_UnitCount;
+                                        
+                                        EMMCBase->emmc_Units[EMMCBase->emmc_UnitCount++] = unit;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (EMMCBase->emmc_Verbose)
+                            bug("[brcm-emmc] Init complete.\n");
+
+                        /* Initialization is complete. Create all tasks for the units now */
+                        for (int unit = 0; unit < EMMCBase->emmc_UnitCount; unit++)
+                        {
+                            if (unit == 0 && EMMCBase->emmc_HideUnit0)
+                                continue;
+
+                            APTR entry = (APTR)UnitTask;
+                            struct Task *task = AllocMem(sizeof(struct Task), MEMF_PUBLIC | MEMF_CLEAR);
+                            struct MemList *ml = AllocMem(sizeof(struct MemList) + 2*sizeof(struct MemEntry), MEMF_PUBLIC | MEMF_CLEAR);
+                            ULONG *stack = AllocMem(UNIT_TASK_STACKSIZE * sizeof(ULONG), MEMF_PUBLIC | MEMF_CLEAR);
+                            const char unit_name[] = "brcm-emmc unit 0";
+                            STRPTR unit_name_copy = AllocMem(sizeof(unit_name), MEMF_PUBLIC | MEMF_CLEAR);
+                            CopyMem((APTR)unit_name, unit_name_copy, sizeof(unit_name));
+
+                            ml->ml_NumEntries = 3;
+                            ml->ml_ME[0].me_Un.meu_Addr = task;
+                            ml->ml_ME[0].me_Length = sizeof(struct Task);
+
+                            ml->ml_ME[1].me_Un.meu_Addr = &stack[0];
+                            ml->ml_ME[1].me_Length = UNIT_TASK_STACKSIZE * sizeof(ULONG);
+
+                            ml->ml_ME[2].me_Un.meu_Addr = unit_name_copy;
+                            ml->ml_ME[2].me_Length = sizeof(unit_name);
+
+                            unit_name_copy[sizeof(unit_name) - 2] += unit;
+
+                            task->tc_UserData = EMMCBase->emmc_Units[unit];
+                            task->tc_SPLower = &stack[0];
+                            task->tc_SPUpper = &stack[UNIT_TASK_STACKSIZE];
+                            task->tc_SPReg = task->tc_SPUpper;
+
+                            task->tc_Node.ln_Name = unit_name_copy;
+                            task->tc_Node.ln_Type = NT_TASK;
+                            task->tc_Node.ln_Pri = UNIT_TASK_PRIORITY;
+
+                            NewList(&task->tc_MemEntry);
+                            AddHead(&task->tc_MemEntry, &ml->ml_Node);
+
+                            EMMCBase->emmc_Units[unit]->su_Caller = FindTask(NULL);
+
+                            if (unit == 0 && EMMCBase->emmc_ReadOnlyUnit0)
+                                EMMCBase->emmc_Units[unit]->su_ReadOnly = 1;
+
+                            AddTask(task, entry, NULL);
+                            Wait(SIGBREAKF_CTRL_C);
+                        }
+                    }
+                }
 
                 binding.cb_ConfigDev->cd_Flags &= ~CDF_CONFIGME;
                 binding.cb_ConfigDev->cd_Driver = EMMCBase;

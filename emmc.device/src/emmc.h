@@ -138,6 +138,10 @@ void UnitTask();
 #define SD_CLOCK_NORMAL     25000000
 #define SD_CLOCK_HIGH       50000000
 
+#define EMMC_CLOCK_ID         400000
+#define EMMC_CLOCK_NORMAL     26000000
+#define EMMC_CLOCK_HIGH       75000000
+
 #define SD_CMD_INDEX(a)		((a) << 24)
 #define SD_CMD_TYPE_NORMAL	0x0
 #define SD_CMD_TYPE_SUSPEND	(1 << 22)
@@ -251,7 +255,7 @@ void UnitTask();
 #define CMD_3               (SD_CMD_INDEX(3) | SD_RESP_R6)
 #define CMD_4               (SD_CMD_INDEX(4))
 #define CMD_5               (SD_CMD_INDEX(5) | SD_RESP_R4)
-#define CMD_6               (SD_CMD_INDEX(6) | SD_RESP_R1 | SD_DATA_READ)
+#define CMD_6               (SD_CMD_INDEX(6) | SD_RESP_R1b)
 #define CMD_7               (SD_CMD_INDEX(7) | SD_RESP_R1b)
 #define CMD_7nr             (SD_CMD_INDEX(7))
 #define CMD_8               (SD_CMD_INDEX(8) | SD_RESP_R7)
@@ -287,11 +291,12 @@ void UnitTask();
 #define SEND_RELATIVE_ADDR      CMD_3
 #define SET_DSR                 CMD_4
 #define IO_SET_OP_COND          CMD_5
-#define SWITCH_FUNC             CMD_6
+#define SWITCH                  CMD_6
 #define SELECT_CARD             CMD_7
 #define DESELECT_CARD           CMD_7nr
 #define SELECT_DESELECT_CARD    CMD_7
 #define SEND_IF_COND            CMD_8
+#define SEND_EXT_CSD            (SD_CMD_INDEX(8) | SD_RESP_R1 | SD_DATA_READ)
 #define SEND_CSD                CMD_9
 #define SEND_CID                CMD_10
 #define VOLTAGE_SWITCH          CMD_11
@@ -396,6 +401,11 @@ LONG EMMC_AbortIO(struct IORequest *io asm("a1"));
     do { ULONG cnt = (tout) / 2; if (cnt == 0) cnt = 1; while(cnt != 0) { if (check_func) break; \
     cnt = cnt - 1; delay(2, EMMCBase); }  } while(0)
 
+void led(int on, struct EMMCBase *EMMCBase);
+void int_do_io(struct IORequest *io , struct EMMCBase * EMMCBase);
+void emmc_cmd(ULONG command, ULONG arg, ULONG timeout, struct EMMCBase *EMMCBase);
 int emmc_card_init(struct EMMCBase *EMMCBase);
+int emmc_read(uint8_t *buf, uint32_t buf_size, uint32_t block_no, struct EMMCBase *EMMCBase);
+int emmc_write(uint8_t *buf, uint32_t buf_size, uint32_t block_no, struct EMMCBase *EMMCBase);
 
 #endif /* __EMMC_H */
