@@ -272,11 +272,11 @@ int main(int wb)
     if (DOSBase == NULL)
         return -1;
 
-    vc4Port = FindPort("Emu68 VC4");
+    vc4Port = FindPort("VideoCore");
     replyPort = CreateMsgPort();
 
     if (vc4Port == NULL) {
-        Printf("Cannot find Emu68-VC4 port. Is the driver running?\n");
+        Printf("Cannot find VideoCore port. Is the driver running?\n");
     }
 
     IntuitionBase = (struct IntuitionBase *)OpenLibrary("intuition.library", 37);
