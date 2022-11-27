@@ -352,8 +352,10 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
                 ULONG phys_vc4 = reg[address_cells - 1];
                 ULONG phys_cpu = reg[address_cells + cpu_address_cells - 1];
 
-                EMMCBase->emmc_MailBox = (APTR)((ULONG)EMMCBase->emmc_MailBox - phys_vc4 + phys_cpu);
-                EMMCBase->emmc_Regs = (APTR)((ULONG)EMMCBase->emmc_Regs - phys_vc4 + phys_cpu);
+                if (EMMCBase->emmc_MailBox != 0)
+                    EMMCBase->emmc_MailBox = (APTR)((ULONG)EMMCBase->emmc_MailBox - phys_vc4 + phys_cpu);
+                if (EMMCBase->emmc_Regs != 0)
+                    EMMCBase->emmc_Regs = (APTR)((ULONG)EMMCBase->emmc_Regs - phys_vc4 + phys_cpu);
 
                 if (EMMCBase->emmc_Verbose > 0) {
                     bug("[brcm-emmc] Mailbox at %08lx\n", (ULONG)EMMCBase->emmc_MailBox);
