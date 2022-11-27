@@ -10,7 +10,7 @@ add_executable(VC4Tweak
     src/main.c
 )
 
-target_link_libraries(VC4Tweak mui amiga devicetree emu68-vc4)
+target_link_libraries(VC4Tweak mui amiga devicetree VideoCore)
 
 install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/VC4Tweak DESTINATION ./VC4Tweak/)
 # install(FILES EmuControl.info DESTINATION ./EmuControl/)

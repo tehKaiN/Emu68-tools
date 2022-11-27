@@ -15,4 +15,5 @@ ULONG DT_GetPropLen(APTR property) (A0)
 CONST_STRPTR DT_GetPropName(APTR property) (A0)
 CONST_APTR DT_GetPropValue(APTR property) (A0)
 APTR DT_GetParent(APTR key) (A0)
+CONST_STRPTR DT_GetKeyName(APTR key) (A0)
 ==end

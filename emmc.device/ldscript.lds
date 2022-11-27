@@ -9,11 +9,11 @@ ENTRY(_rom_start)
 SECTIONS
 {
     /* Board parameters which will be subsequently used to generate proper expansion rom structures */
-    _type   = 0x91;         /* ERT_ZORROIII | ERTF_DIAGVALID | size = 1 (64K) */
-    _pID    = 0x21;
-    _flags  = 0xd0;         /* Memtype, ZorroIII flag, cannot shutoff */
+    _type   = 0x91;
+    _pID    = 0x24;
+    _flags  = 0x50;
     _mID    = 0x6d73;
-    _serial = 0x04f6403d;
+    _serial = 0x77d0221c;
     _off    = _diag_start - _rom_start;
     _int    = 0x00;
 
@@ -73,7 +73,7 @@ SECTIONS
         _code_start = .;
 
         /* Everything from main.c will be copied to ram together with DiagArea */
-        *main.c.o(.text .text.* .rodata .rodata.*)
+        *main*(.text .text.* .rodata .rodata.*)
 
         _ramcopy_end = .;
 

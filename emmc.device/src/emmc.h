@@ -1,121 +1,93 @@
-/*
-    Copyright © 2021 Michal Schulz <michal.schulz@gmx.de>
-    https://github.com/michalsc
-
-    This Source Code Form is subject to the terms of the
-    Mozilla Public License, v. 2.0. If a copy of the MPL was not distributed
-    with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
-*/
-
-#ifndef _SDCARD_H
-#define _SDCARD_H
+#ifndef __EMMC_H
+#define __EMMC_H
 
 #include <exec/types.h>
-#include <exec/nodes.h>
 #include <exec/libraries.h>
 #include <exec/devices.h>
-#include <exec/execbase.h>
+#include <exec/io.h>
 #include <exec/semaphores.h>
-
+#include <exec/interrupts.h>
 #include <devices/timer.h>
-
+#include <libraries/configvars.h>
 #include <stdint.h>
 
-struct sd_scr
+#define EMMC_VERSION  1
+#define EMMC_REVISION 0
+#define EMMC_PRIORITY 20
+
+#define USE_BUSY_TIMER  1
+
+struct emmc_scr
 {
     uint32_t    scr[2];
-    uint32_t    sd_bus_widths;
-    int         sd_version;
-    int         sd_commands;
+    uint32_t    emmc_bus_widths;
+    int         emmc_version;
+    int         emmc_commands;
 };
 
-struct SDCardUnit;
+struct EMMCUnit;
 
-struct SDCardBase {
-    struct Device       sd_Device;
-    struct ExecBase *   sd_SysBase;
-    APTR                sd_ROMBase;
-    APTR                sd_DeviceTreeBase;
-    APTR                sd_MailBox;
-    APTR                sd_SDHC;
-    APTR                sd_SDHOST;
-    ULONG *             sd_Request;
-    APTR                sd_RequestBase;
-    ULONG               sd_SDHCClock;
+struct EMMCBase {
+    struct Device       emmc_Device;
+    struct ExecBase *   emmc_SysBase;
+    APTR                emmc_ROMBase;
+    APTR                emmc_DeviceTreeBase;
+    APTR                emmc_MailBox;
+    APTR                emmc_Regs;
+    ULONG *             emmc_Request;
+    APTR                emmc_RequestBase;
+    ULONG               emmc_SDHCClock;
 
-    struct ConfigDev *  sd_ConfigDev;
+    struct ConfigDev *  emmc_ConfigDev;
 
-    struct SDCardUnit * sd_Units[5];    /* 5 units at most for the case where SDCard has 4 primary partitions type 0x76 */
-    UWORD               sd_UnitCount;
+    struct EMMCUnit *   emmc_Units[5];    /* 5 units at most for the case where SDCard has 4 primary partitions type 0x76 */
+    UWORD               emmc_UnitCount;
 
-    struct SignalSemaphore sd_Lock;
-    struct timerequest  sd_TimeReq;
-    struct MsgPort      sd_Port;
+    struct SignalSemaphore emmc_Lock;
+    struct timerequest  emmc_TimeReq;
+    struct MsgPort      emmc_Port;
 
-    void              (*sd_DoIO)(struct IORequest *io, struct SDCardBase * SDCardBase);
-    UWORD *             sd_NSDSupported;
+    struct emmc_scr     emmc_SCR;
 
-    /* MBox functions */
-    uint32_t          (*get_clock_rate)(uint32_t clock_id, struct SDCardBase * SDCardBase);
-    uint32_t          (*set_clock_rate)(uint32_t clock_id, uint32_t speed, struct SDCardBase * SDCardBase);
-    uint32_t          (*get_clock_state)(uint32_t id, struct SDCardBase * SDCardBase);
-    uint32_t          (*set_clock_state)(uint32_t id, uint32_t state, struct SDCardBase * SDCardBase);
-    uint32_t          (*get_power_state)(uint32_t id, struct SDCardBase * SDCardBase);
-    uint32_t          (*set_power_state)(uint32_t id, uint32_t state, struct SDCardBase * SDCardBase);
-    uint32_t          (*set_led_state)(uint32_t id, uint32_t state, struct SDCardBase * SDCardBase);
+    UWORD               emmc_BlockSize;
+    UWORD               emmc_BlocksToTransfer;
+    APTR                emmc_Buffer;
 
-    /* SD Card related functions */
-    ULONG             (*sd_GetBaseClock)(struct SDCardBase *);
-    int               (*sd_PowerCycle)(struct SDCardBase *);
-    void              (*sd_SetLED)(int on, struct SDCardBase *);
-    void              (*sd_Delay)(ULONG us, struct SDCardBase *);
-    int               (*sd_CMD_int)(ULONG cmd, ULONG arg, ULONG timeout, struct SDCardBase *);
-    int               (*sd_CMD)(ULONG cmd, ULONG arg, ULONG timeout, struct SDCardBase *);
-    int               (*sd_CardInit)(struct SDCardBase *SDCardBase);
-    int               (*sd_Write)(uint8_t *buf, uint32_t buf_size, uint32_t block_no, struct SDCardBase *SDCardBase);
-    int               (*sd_Read)(uint8_t *buf, uint32_t buf_size, uint32_t block_no, struct SDCardBase *SDCardBase);
+    ULONG               emmc_Res0;
+    ULONG               emmc_Res1;
+    ULONG               emmc_Res2;
+    ULONG               emmc_Res3;
 
-    struct sd_scr       sd_SCR;
+    ULONG               emmc_CID[4];
+    UBYTE               emmc_StatusReg[64];
+    CONST_STRPTR        emmc_ManuID[255];
 
-    UWORD               sd_BlockSize;
-    UWORD               sd_BlocksToTransfer;
-    APTR                sd_Buffer;
+    ULONG               emmc_Capabilities0;
+    ULONG               emmc_Capabilities1;
+    ULONG               emmc_LastCMD;
+    ULONG               emmc_LastCMDSuccess;
+    ULONG               emmc_LastError;
+    ULONG               emmc_LastInterrupt;
+    ULONG               emmc_CardRCA;
+    ULONG               emmc_CardRemoval;
+    ULONG               emmc_FailedVoltageSwitch;
+    ULONG               emmc_CardOCR;
+    ULONG               emmc_CardSupportsSDHC;
+    ULONG               emmc_Overclock;
 
-    ULONG               sd_Res0;
-    ULONG               sd_Res1;
-    ULONG               sd_Res2;
-    ULONG               sd_Res3;
+    UBYTE               emmc_DisableHighSpeed;
+    UBYTE               emmc_InCommand;
+    UBYTE               emmc_AppCommand;
+    UBYTE               emmc_HideUnit0;
+    UBYTE               emmc_ReadOnlyUnit0;
+    UBYTE               emmc_Verbose;
 
-    ULONG               sd_CID[4];
-    UBYTE               sd_StatusReg[64];
-    CONST_STRPTR        sd_ManuID[255];
-
-    ULONG               sd_Capabilities0;
-    ULONG               sd_Capabilities1;
-    ULONG               sd_LastCMD;
-    ULONG               sd_LastCMDSuccess;
-    ULONG               sd_LastError;
-    ULONG               sd_LastInterrupt;
-    ULONG               sd_CardRCA;
-    ULONG               sd_CardRemoval;
-    ULONG               sd_FailedVoltageSwitch;
-    ULONG               sd_CardOCR;
-    ULONG               sd_CardSupportsSDHC;
-    ULONG               sd_Overclock;
-
-    UBYTE               sd_DisableHighSpeed;
-    UBYTE               sd_InCommand;
-    UBYTE               sd_AppCommand;
-    UBYTE               sd_HideUnit0;
-    UBYTE               sd_ReadOnlyUnit0;
-    UBYTE               sd_Verbose;
-
-    struct Interrupt    sd_Interrupt;
+    struct Interrupt    emmc_Interrupt;
 };
 
-struct SDCardUnit {
+struct EMMCUnit {
     struct Unit         su_Unit;
-    struct SDCardBase * su_Base;
+    struct EMMCBase *   su_Base;
     uint32_t            su_StartBlock;
     uint32_t            su_BlockCount;
     uint8_t             su_UnitNum;
@@ -125,25 +97,13 @@ struct SDCardUnit {
 
 void UnitTask();
 
-#define SDCARD_VERSION  1
-#define SDCARD_REVISION 2
-#define SDCARD_PRIORITY 20
-
 #define UNIT_TASK_PRIORITY  10
-#define UNIT_TASK_STACKSIZE 1024
-
-#define USE_SDHOST      1
+#define UNIT_TASK_STACKSIZE 16384
 
 #define BASE_NEG_SIZE   (6 * 6)
-#define BASE_POS_SIZE   (sizeof(struct SDCardBase))
+#define BASE_POS_SIZE   (sizeof(struct EMMCBase))
 
-uint32_t get_clock_rate(uint32_t clock_id, struct SDCardBase * SDCardBase);
-uint32_t get_max_clock_rate(uint32_t clock_id, struct SDCardBase * SDCardBase);
-uint32_t get_min_clock_rate(uint32_t clock_id, struct SDCardBase * SDCardBase);
-uint32_t set_clock_rate(uint32_t clock_id, uint32_t speed, struct SDCardBase * SDCardBase);
-uint32_t get_power_state(uint32_t id, struct SDCardBase * SDCardBase);
-uint32_t set_power_state(uint32_t id, uint32_t state, struct SDCardBase * SDCardBase);
-void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase);
+/* EMMC regs */
 
 #define	EMMC_ARG2		0
 #define EMMC_BLKSIZECNT		4
@@ -177,6 +137,10 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase);
 #define SD_CLOCK_ID         400000
 #define SD_CLOCK_NORMAL     25000000
 #define SD_CLOCK_HIGH       50000000
+
+#define EMMC_CLOCK_ID         400000
+#define EMMC_CLOCK_NORMAL     26000000
+#define EMMC_CLOCK_HIGH       75000000
 
 #define SD_CMD_INDEX(a)		((a) << 24)
 #define SD_CMD_TYPE_NORMAL	0x0
@@ -236,20 +200,20 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase);
 #define SD_CARD_REMOVAL         (1 << 7)
 #define SD_CARD_INTERRUPT       (1 << 8)
 
-#define SUCCESS(a)          (a->sd_LastCMDSuccess)
-#define FAIL(a)             (a->sd_LastCMDSuccess == 0)
-#define TIMEOUT(a)          (FAIL(a) && (a->sd_LastError == 0))
-#define CMD_TIMEOUT(a)      (FAIL(a) && (a->sd_LastError & (1 << 16)))
-#define CMD_CRC(a)          (FAIL(a) && (a->sd_LastError & (1 << 17)))
-#define CMD_END_BIT(a)      (FAIL(a) && (a->sd_LastError & (1 << 18)))
-#define CMD_INDEX(a)        (FAIL(a) && (a->sd_LastError & (1 << 19)))
-#define DATA_TIMEOUT(a)     (FAIL(a) && (a->sd_LastError & (1 << 20)))
-#define DATA_CRC(a)         (FAIL(a) && (a->sd_LastError & (1 << 21)))
-#define DATA_END_BIT(a)     (FAIL(a) && (a->sd_LastError & (1 << 22)))
-#define CURRENT_LIMIT(a)    (FAIL(a) && (a->sd_LastError & (1 << 23)))
-#define ACMD12_ERROR(a)     (FAIL(a) && (a->sd_LastError & (1 << 24)))
-#define ADMA_ERROR(a)       (FAIL(a) && (a->sd_LastError & (1 << 25)))
-#define TUNING_ERROR(a)     (FAIL(a) && (a->sd_LastError & (1 << 26)))
+#define SUCCESS(a)          (a->emmc_LastCMDSuccess)
+#define FAIL(a)             (a->emmc_LastCMDSuccess == 0)
+#define TIMEOUT(a)          (FAIL(a) && (a->emmc_LastError == 0))
+#define CMD_TIMEOUT(a)      (FAIL(a) && (a->emmc_LastError & (1 << 16)))
+#define CMD_CRC(a)          (FAIL(a) && (a->emmc_LastError & (1 << 17)))
+#define CMD_END_BIT(a)      (FAIL(a) && (a->emmc_LastError & (1 << 18)))
+#define CMD_INDEX(a)        (FAIL(a) && (a->emmc_LastError & (1 << 19)))
+#define DATA_TIMEOUT(a)     (FAIL(a) && (a->emmc_LastError & (1 << 20)))
+#define DATA_CRC(a)         (FAIL(a) && (a->emmc_LastError & (1 << 21)))
+#define DATA_END_BIT(a)     (FAIL(a) && (a->emmc_LastError & (1 << 22)))
+#define CURRENT_LIMIT(a)    (FAIL(a) && (a->emmc_LastError & (1 << 23)))
+#define ACMD12_ERROR(a)     (FAIL(a) && (a->emmc_LastError & (1 << 24)))
+#define ADMA_ERROR(a)       (FAIL(a) && (a->emmc_LastError & (1 << 25)))
+#define TUNING_ERROR(a)     (FAIL(a) && (a->emmc_LastError & (1 << 26)))
 
 #define SD_RESP_NONE        SD_CMD_RSPNS_TYPE_NONE
 #define SD_RESP_R1          (SD_CMD_RSPNS_TYPE_48 | SD_CMD_CRCCHK_EN)
@@ -286,11 +250,12 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase);
 #define SEND_SCR                (ACMD_51 | IS_APP_CMD)
 
 #define CMD_0               (SD_CMD_INDEX(0))
+#define CMD_1               (SD_CMD_INDEX(1) | SD_RESP_R3)
 #define CMD_2               (SD_CMD_INDEX(2) | SD_RESP_R2)
 #define CMD_3               (SD_CMD_INDEX(3) | SD_RESP_R6)
 #define CMD_4               (SD_CMD_INDEX(4))
 #define CMD_5               (SD_CMD_INDEX(5) | SD_RESP_R4)
-#define CMD_6               (SD_CMD_INDEX(6) | SD_RESP_R1 | SD_DATA_READ)
+#define CMD_6               (SD_CMD_INDEX(6) | SD_RESP_R1b)
 #define CMD_7               (SD_CMD_INDEX(7) | SD_RESP_R1b)
 #define CMD_7nr             (SD_CMD_INDEX(7))
 #define CMD_8               (SD_CMD_INDEX(8) | SD_RESP_R7)
@@ -321,15 +286,17 @@ void int_do_io(struct IORequest *io , struct SDCardBase * SDCardBase);
 #define CMD_56              (SD_CMD_INDEX(56) | SD_RESP_R1 | SD_CMD_ISDATA)
 
 #define GO_IDLE_STATE           CMD_0
+#define SEND_OP_COND            CMD_1
 #define ALL_SEND_CID            CMD_2
 #define SEND_RELATIVE_ADDR      CMD_3
 #define SET_DSR                 CMD_4
 #define IO_SET_OP_COND          CMD_5
-#define SWITCH_FUNC             CMD_6
+#define SWITCH                  CMD_6
 #define SELECT_CARD             CMD_7
 #define DESELECT_CARD           CMD_7nr
 #define SELECT_DESELECT_CARD    CMD_7
 #define SEND_IF_COND            CMD_8
+#define SEND_EXT_CSD            (SD_CMD_INDEX(8) | SD_RESP_R1 | SD_DATA_READ)
 #define SEND_CSD                CMD_9
 #define SEND_CID                CMD_10
 #define VOLTAGE_SWITCH          CMD_11
@@ -411,10 +378,7 @@ static inline void wr32be(APTR addr, ULONG offset, ULONG val)
     asm volatile("nop");
 }
 
-#define TIMEOUT_WAIT(check_func, tout) \
-    do { ULONG cnt = (tout) / 2; if (cnt == 0) cnt = 1; while(cnt != 0) { if (check_func) break; \
-    cnt = cnt - 1; SDCardBase->sd_Delay(2, SDCardBase); }  } while(0)
-
+/* Misc */
 
 static inline void putch(UBYTE data asm("d0"), APTR ignore asm("a3"))
 {
@@ -422,14 +386,26 @@ static inline void putch(UBYTE data asm("d0"), APTR ignore asm("a3"))
 }
 
 void kprintf(const char * msg asm("a0"), void * args asm("a1"));
-ULONG SD_Expunge(struct SDCardBase * SDCardBase asm("a6"));
-APTR SD_ExtFunc(struct SDCardBase * SDCardBase asm("a6"));
-void SD_Open(struct IORequest * io asm("a1"), LONG unitNumber asm("d0"), ULONG flags asm("d1"));
-ULONG SD_Close(struct IORequest * io asm("a1"));
-void SD_BeginIO(struct IORequest *io asm("a1"));
-LONG SD_AbortIO(struct IORequest *io asm("a1"));
+void delay(ULONG us, struct EMMCBase *EMMCBase);
+ULONG EMMC_Expunge(struct EMMCBase * EMMCBase asm("a6"));
+APTR EMMC_ExtFunc(struct EMMCBase * EMMCBase asm("a6"));
+void EMMC_Open(struct IORequest * io asm("a1"), LONG unitNumber asm("d0"), ULONG flags asm("d1"));
+ULONG EMMC_Close(struct IORequest * io asm("a1"));
+void EMMC_BeginIO(struct IORequest *io asm("a1"));
+LONG EMMC_AbortIO(struct IORequest *io asm("a1"));
 
 #define bug(string, ...) \
     do { ULONG args[] = {0, __VA_ARGS__}; kprintf(string, &args[1]); } while(0)
-    
-#endif /* _SDCARD_H */
+
+#define TIMEOUT_WAIT(check_func, tout) \
+    do { ULONG cnt = (tout) / 2; if (cnt == 0) cnt = 1; while(cnt != 0) { if (check_func) break; \
+    cnt = cnt - 1; delay(2, EMMCBase); }  } while(0)
+
+void led(int on, struct EMMCBase *EMMCBase);
+void int_do_io(struct IORequest *io , struct EMMCBase * EMMCBase);
+void emmc_cmd(ULONG command, ULONG arg, ULONG timeout, struct EMMCBase *EMMCBase);
+int emmc_card_init(struct EMMCBase *EMMCBase);
+int emmc_read(uint8_t *buf, uint32_t buf_size, uint32_t block_no, struct EMMCBase *EMMCBase);
+int emmc_write(uint8_t *buf, uint32_t buf_size, uint32_t block_no, struct EMMCBase *EMMCBase);
+
+#endif /* __EMMC_H */

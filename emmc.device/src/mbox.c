@@ -22,7 +22,7 @@
 
 #include <stdint.h>
 
-#include "sdcard.h"
+#include "emmc.h"
 
 /* status register flags */
 
@@ -35,10 +35,10 @@
 #define VCTAG_GET_ARM_MEMORY     0x00010005
 #define VCTAG_GET_CLOCK_RATE     0x00030002
 
-static uint32_t mbox_recv(uint32_t channel, struct SDCardBase * SDCardBase)
+static uint32_t mbox_recv(uint32_t channel, struct EMMCBase * EMMCBase)
 {
-	volatile uint32_t *mbox_read = (uint32_t*)(SDCardBase->sd_MailBox);
-	volatile uint32_t *mbox_status = (uint32_t*)((uintptr_t)SDCardBase->sd_MailBox + 0x18);
+	volatile uint32_t *mbox_read = (uint32_t*)(EMMCBase->emmc_MailBox);
+	volatile uint32_t *mbox_status = (uint32_t*)((uintptr_t)EMMCBase->emmc_MailBox + 0x18);
 	uint32_t response, status;
 
 	do
@@ -59,10 +59,10 @@ static uint32_t mbox_recv(uint32_t channel, struct SDCardBase * SDCardBase)
 	return (response & ~MBOX_CHANMASK);
 }
 
-static void mbox_send(uint32_t channel, uint32_t data, struct SDCardBase * SDCardBase)
+static void mbox_send(uint32_t channel, uint32_t data, struct EMMCBase * EMMCBase)
 {
-	volatile uint32_t *mbox_write = (uint32_t*)((uintptr_t)SDCardBase->sd_MailBox + 0x20);
-	volatile uint32_t *mbox_status = (uint32_t*)((uintptr_t)SDCardBase->sd_MailBox + 0x18);
+	volatile uint32_t *mbox_write = (uint32_t*)((uintptr_t)EMMCBase->emmc_MailBox + 0x20);
+	volatile uint32_t *mbox_status = (uint32_t*)((uintptr_t)EMMCBase->emmc_MailBox + 0x18);
 	uint32_t status;
 
 	data &= ~MBOX_CHANMASK;
@@ -79,11 +79,11 @@ static void mbox_send(uint32_t channel, uint32_t data, struct SDCardBase * SDCar
 	*mbox_write = LE32(data);
 }
 
-uint32_t get_clock_rate(uint32_t clock_id, struct SDCardBase * SDCardBase)
+uint32_t get_clock_rate(uint32_t clock_id, struct EMMCBase * EMMCBase)
 {
-    struct ExecBase *SysBase = SDCardBase->sd_SysBase;
+    struct ExecBase *SysBase = EMMCBase->emmc_SysBase;
 
-    ULONG *FBReq = SDCardBase->sd_Request;
+    ULONG *FBReq = EMMCBase->emmc_Request;
     ULONG len = 8*4;
 
     FBReq[0] = LE32(4*8);       // Length
@@ -96,17 +96,17 @@ uint32_t get_clock_rate(uint32_t clock_id, struct SDCardBase * SDCardBase)
     FBReq[7] = 0;
 
     CacheClearE(FBReq, len, CACRF_ClearD);
-    mbox_send(8, (ULONG)FBReq, SDCardBase);
-    ULONG resp = mbox_recv(8, SDCardBase); 
+    mbox_send(8, (ULONG)FBReq, EMMCBase);
+    ULONG resp = mbox_recv(8, EMMCBase); 
 
     return LE32(FBReq[6]);
 }
 
-uint32_t set_clock_rate(uint32_t clock_id, uint32_t speed, struct SDCardBase * SDCardBase)
+uint32_t set_clock_rate(uint32_t clock_id, uint32_t speed, struct EMMCBase * EMMCBase)
 {
-    struct ExecBase *SysBase = SDCardBase->sd_SysBase;
+    struct ExecBase *SysBase = EMMCBase->emmc_SysBase;
 
-    ULONG *FBReq = SDCardBase->sd_Request;
+    ULONG *FBReq = EMMCBase->emmc_Request;
     ULONG len = 9*4;
 
     FBReq[0] = LE32(4*9);       // Length
@@ -120,12 +120,152 @@ uint32_t set_clock_rate(uint32_t clock_id, uint32_t speed, struct SDCardBase * S
     FBReq[8] = 0;
 
     CacheClearE(FBReq, len, CACRF_ClearD);
-    mbox_send(8, (ULONG)FBReq, SDCardBase);
-    ULONG reply = mbox_recv(8, SDCardBase);
+    mbox_send(8, (ULONG)FBReq, EMMCBase);
+    ULONG reply = mbox_recv(8, EMMCBase);
 
     return LE32(FBReq[6]);
 }
 
+uint32_t get_clock_state(uint32_t id, struct EMMCBase * EMMCBase)
+{
+    struct ExecBase *SysBase = EMMCBase->emmc_SysBase;
+
+    ULONG *FBReq = EMMCBase->emmc_Request;
+    ULONG len = 8*4;
+
+    FBReq[0] = LE32(4*8);       // Length
+    FBReq[1] = 0;               // Request
+    FBReq[2] = LE32(0x00030001);// GetClockRate
+    FBReq[3] = LE32(8);
+    FBReq[4] = 0;
+    FBReq[5] = LE32(id);
+    FBReq[6] = 0;
+    FBReq[7] = 0;
+
+    CacheClearE(FBReq, len, CACRF_ClearD);
+    mbox_send(8, (ULONG)FBReq, EMMCBase);
+    ULONG reply = mbox_recv(8, EMMCBase);
+
+    return LE32(FBReq[6]);
+}
+
+uint32_t set_clock_state(uint32_t id, uint32_t state, struct EMMCBase * EMMCBase)
+{
+    struct ExecBase *SysBase = EMMCBase->emmc_SysBase;
+
+    ULONG *FBReq = EMMCBase->emmc_Request;
+    ULONG len = 8*4;
+
+    FBReq[0] = LE32(4*8);       // Length
+    FBReq[1] = 0;               // Request
+    FBReq[2] = LE32(0x00038001);// SetClockRate
+    FBReq[3] = LE32(8);
+    FBReq[4] = 0;
+    FBReq[5] = LE32(id);
+    FBReq[6] = LE32(state);
+    FBReq[7] = 0;
+
+    CacheClearE(FBReq, len, CACRF_ClearD);
+    mbox_send(8, (ULONG)FBReq, EMMCBase);
+    ULONG reply = mbox_recv(8, EMMCBase);
+
+    return LE32(FBReq[6]);
+}
+
+uint32_t get_power_state(uint32_t id, struct EMMCBase * EMMCBase)
+{
+    struct ExecBase *SysBase = EMMCBase->emmc_SysBase;
+
+    ULONG *FBReq = EMMCBase->emmc_Request;
+    ULONG len = 8*4;
+
+    FBReq[0] = LE32(4*8);       // Length
+    FBReq[1] = 0;               // Request
+    FBReq[2] = LE32(0x00020001);// GetClockRate
+    FBReq[3] = LE32(8);
+    FBReq[4] = 0;
+    FBReq[5] = LE32(id);
+    FBReq[6] = 0;
+    FBReq[7] = 0;
+
+    CacheClearE(FBReq, len, CACRF_ClearD);
+    mbox_send(8, (ULONG)FBReq, EMMCBase);
+    ULONG reply = mbox_recv(8, EMMCBase);
+
+    return LE32(FBReq[6]);
+}
+
+uint32_t set_power_state(uint32_t id, uint32_t state, struct EMMCBase * EMMCBase)
+{
+    struct ExecBase *SysBase = EMMCBase->emmc_SysBase;
+
+    ULONG *FBReq = EMMCBase->emmc_Request;
+    ULONG len = 9*4;
+
+    FBReq[0] = LE32(4*9);       // Length
+    FBReq[1] = 0;               // Request
+    FBReq[2] = LE32(0x00028001);// SetClockRate
+    FBReq[3] = LE32(12);
+    FBReq[4] = 0;
+    FBReq[5] = LE32(id);
+    FBReq[6] = LE32(state);
+    FBReq[7] = 0;
+    FBReq[8] = 0;
+
+    CacheClearE(FBReq, len, CACRF_ClearD);
+    mbox_send(8, (ULONG)FBReq, EMMCBase);
+    ULONG reply = mbox_recv(8, EMMCBase);
+
+    return LE32(FBReq[6]);
+}
+
+uint32_t get_extgpio_state(uint32_t id, struct EMMCBase * EMMCBase)
+{
+    struct ExecBase *SysBase = EMMCBase->emmc_SysBase;
+
+    ULONG *FBReq = EMMCBase->emmc_Request;
+    ULONG len = 8*4;
+
+    FBReq[0] = LE32(4*8);       // Length
+    FBReq[1] = 0;               // Request
+    FBReq[2] = LE32(0x00030041);// GET_GPIO_STATE
+    FBReq[3] = LE32(8);
+    FBReq[4] = 0;
+    FBReq[5] = LE32(128 + id);
+    FBReq[6] = 0;
+    FBReq[7] = 0;
+
+    CacheClearE(FBReq, len, CACRF_ClearD);
+    mbox_send(8, (ULONG)FBReq, EMMCBase);
+    ULONG reply = mbox_recv(8, EMMCBase);
+
+    return LE32(FBReq[6]);
+}
+
+uint32_t set_extgpio_state(uint32_t id, uint32_t state, struct EMMCBase * EMMCBase)
+{
+    struct ExecBase *SysBase = EMMCBase->emmc_SysBase;
+
+    ULONG *FBReq = EMMCBase->emmc_Request;
+    ULONG len = 8*4;
+
+    FBReq[0] = LE32(4*8);       // Length
+    FBReq[1] = 0;               // Request
+    FBReq[2] = LE32(0x00038041);// SET_GPIO_STATE
+    FBReq[3] = LE32(8);
+    FBReq[4] = 0;
+    FBReq[5] = LE32(128 + id);
+    FBReq[6] = LE32(state);
+    FBReq[7] = 0;
+
+    CacheClearE(FBReq, len, CACRF_ClearD);
+    mbox_send(8, (ULONG)FBReq, EMMCBase);
+    ULONG reply = mbox_recv(8, EMMCBase);
+
+    return LE32(FBReq[6]);
+}
+
+#if 0
 uint32_t set_sdhost_clock(uint32_t speed, struct SDCardBase * SDCardBase)
 {
     struct ExecBase *SysBase = SDCardBase->sd_SysBase;
@@ -150,98 +290,7 @@ uint32_t set_sdhost_clock(uint32_t speed, struct SDCardBase * SDCardBase)
     return LE32(FBReq[6]);
 }
 
-uint32_t get_clock_state(uint32_t id, struct SDCardBase * SDCardBase)
-{
-    struct ExecBase *SysBase = SDCardBase->sd_SysBase;
 
-    ULONG *FBReq = SDCardBase->sd_Request;
-    ULONG len = 8*4;
-
-    FBReq[0] = LE32(4*8);       // Length
-    FBReq[1] = 0;               // Request
-    FBReq[2] = LE32(0x00030001);// GetClockRate
-    FBReq[3] = LE32(8);
-    FBReq[4] = 0;
-    FBReq[5] = LE32(id);
-    FBReq[6] = 0;
-    FBReq[7] = 0;
-
-    CacheClearE(FBReq, len, CACRF_ClearD);
-    mbox_send(8, (ULONG)FBReq, SDCardBase);
-    ULONG reply = mbox_recv(8, SDCardBase);
-
-    return LE32(FBReq[6]);
-}
-
-uint32_t set_clock_state(uint32_t id, uint32_t state, struct SDCardBase * SDCardBase)
-{
-    struct ExecBase *SysBase = SDCardBase->sd_SysBase;
-
-    ULONG *FBReq = SDCardBase->sd_Request;
-    ULONG len = 8*4;
-
-    FBReq[0] = LE32(4*8);       // Length
-    FBReq[1] = 0;               // Request
-    FBReq[2] = LE32(0x00038001);// SetClockRate
-    FBReq[3] = LE32(8);
-    FBReq[4] = 0;
-    FBReq[5] = LE32(id);
-    FBReq[6] = LE32(state);
-    FBReq[7] = 0;
-
-    CacheClearE(FBReq, len, CACRF_ClearD);
-    mbox_send(8, (ULONG)FBReq, SDCardBase);
-    ULONG reply = mbox_recv(8, SDCardBase);
-
-    return LE32(FBReq[6]);
-}
-
-uint32_t get_power_state(uint32_t id, struct SDCardBase * SDCardBase)
-{
-    struct ExecBase *SysBase = SDCardBase->sd_SysBase;
-
-    ULONG *FBReq = SDCardBase->sd_Request;
-    ULONG len = 8*4;
-
-    FBReq[0] = LE32(4*8);       // Length
-    FBReq[1] = 0;               // Request
-    FBReq[2] = LE32(0x00020001);// GetClockRate
-    FBReq[3] = LE32(8);
-    FBReq[4] = 0;
-    FBReq[5] = LE32(id);
-    FBReq[6] = 0;
-    FBReq[7] = 0;
-
-    CacheClearE(FBReq, len, CACRF_ClearD);
-    mbox_send(8, (ULONG)FBReq, SDCardBase);
-    ULONG reply = mbox_recv(8, SDCardBase);
-
-    return LE32(FBReq[6]);
-}
-
-uint32_t set_power_state(uint32_t id, uint32_t state, struct SDCardBase * SDCardBase)
-{
-    struct ExecBase *SysBase = SDCardBase->sd_SysBase;
-
-    ULONG *FBReq = SDCardBase->sd_Request;
-    ULONG len = 9*4;
-
-    FBReq[0] = LE32(4*9);       // Length
-    FBReq[1] = 0;               // Request
-    FBReq[2] = LE32(0x00028001);// SetClockRate
-    FBReq[3] = LE32(12);
-    FBReq[4] = 0;
-    FBReq[5] = LE32(id);
-    FBReq[6] = LE32(state);
-    FBReq[7] = 0;
-    FBReq[8] = 0;
-
-    CacheClearE(FBReq, len, CACRF_ClearD);
-    mbox_send(8, (ULONG)FBReq, SDCardBase);
-    ULONG reply = mbox_recv(8, SDCardBase);
-
-    return LE32(FBReq[6]);
-}
 
 #define MAILBOX_TAG_SET_GPIO_STATE  0x00038041
 
@@ -269,48 +318,4 @@ uint32_t set_led_state(uint32_t id, uint32_t state, struct SDCardBase * SDCardBa
     return LE32(FBReq[6]); 
 }
 
-uint32_t get_extgpio_state(uint32_t id, struct SDCardBase * SDCardBase)
-{
-    struct ExecBase *SysBase = SDCardBase->sd_SysBase;
-
-    ULONG *FBReq = SDCardBase->sd_Request;
-    ULONG len = 8*4;
-
-    FBReq[0] = LE32(4*8);       // Length
-    FBReq[1] = 0;               // Request
-    FBReq[2] = LE32(0x00030041);// GET_GPIO_STATE
-    FBReq[3] = LE32(8);
-    FBReq[4] = 0;
-    FBReq[5] = LE32(128 + id);
-    FBReq[6] = 0;
-    FBReq[7] = 0;
-
-    CacheClearE(FBReq, len, CACRF_ClearD);
-    mbox_send(8, (ULONG)FBReq, SDCardBase);
-    ULONG reply = mbox_recv(8, SDCardBase);
-
-    return LE32(FBReq[6]);
-}
-
-uint32_t set_extgpio_state(uint32_t id, uint32_t state, struct SDCardBase * SDCardBase)
-{
-    struct ExecBase *SysBase = SDCardBase->sd_SysBase;
-
-    ULONG *FBReq = SDCardBase->sd_Request;
-    ULONG len = 8*4;
-
-    FBReq[0] = LE32(4*8);       // Length
-    FBReq[1] = 0;               // Request
-    FBReq[2] = LE32(0x00038041);// SET_GPIO_STATE
-    FBReq[3] = LE32(8);
-    FBReq[4] = 0;
-    FBReq[5] = LE32(128 + id);
-    FBReq[6] = LE32(state);
-    FBReq[7] = 0;
-
-    CacheClearE(FBReq, len, CACRF_ClearD);
-    mbox_send(8, (ULONG)FBReq, SDCardBase);
-    ULONG reply = mbox_recv(8, SDCardBase);
-
-    return LE32(FBReq[6]);
-}
+#endif

@@ -81,5 +81,8 @@
 #ifdef __CLIB_PRAGMA_AMICALL
  #pragma amicall(DeviceTreeBase, 0x36, DT_GetParent(a0))
 #endif /* __CLIB_PRAGMA_AMICALL */
+#ifdef __CLIB_PRAGMA_AMICALL
+ #pragma amicall(DeviceTreeBase, 0x3c, DT_GetKeyName(a0))
+#endif /* __CLIB_PRAGMA_AMICALL */
 
 #endif /* PRAGMAS_DEVICETREE_PRAGMAS_H */

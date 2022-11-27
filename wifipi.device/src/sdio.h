@@ -176,6 +176,7 @@
 #define CMD_38              (SD_CMD_INDEX(38) | SD_RESP_R1b)
 #define CMD_42              (SD_CMD_RESERVED(42) | SD_RESP_R1)
 #define CMD_52              (SD_CMD_INDEX(52) | SD_RESP_R5)
+#define CMD_53              (SD_CMD_INDEX(53) | SD_RESP_R5)
 #define CMD_55              (SD_CMD_INDEX(55) | SD_RESP_R1)
 #define CMD_56              (SD_CMD_INDEX(56) | SD_RESP_R1 | SD_CMD_ISDATA)
 
@@ -212,6 +213,7 @@
 #define ERASE                   CMD_38
 #define LOCK_UNLOCK             CMD_42
 #define IO_RW_DIRECT            CMD_52
+#define IO_RW_EXTENDED          CMD_53
 #define APP_CMD                 CMD_55
 #define GEN_CMD                 CMD_56
 
@@ -239,6 +241,8 @@
 #define SD_FUNC_CIA         0
 #define SD_FUNC_BAK         1
 #define SD_FUNC_RAD         2
+
+#include "zw_regs.h"
 
 #define SDIO_FBR_ADDR(func, reg)    (((func) << 8) | (reg))
 

@@ -146,7 +146,7 @@ struct Size get_display_size(struct VC4Base *VC4Base)
     struct Size dimension;
 
     FBReq[c++] = 0;
-    FBReq[c++] = LE32(0x40004);
+    FBReq[c++] = LE32(0x40003);
     FBReq[c++] = LE32(8);
     FBReq[c++] = 0;
     FBReq[c++] = LE32(0);

@@ -34,6 +34,7 @@ asm(
 "       .short _DT_GetPropName  \n"
 "       .short _DT_GetPropValue \n"
 "       .short _DT_GetParent    \n"
+"       .short _DT_GetKeyName   \n"
 "       .short -1               \n"
 );
 
@@ -160,7 +161,7 @@ APTR Init(struct ExecBase *SysBase asm("a6"))
     if (base_pointer)
     {
         DeviceTreeBase = (struct DeviceTreeBase *)((UBYTE *)base_pointer + BASE_NEG_SIZE);
-        MakeFunctions(DeviceTreeBase, relFuncTable, (ULONG)binding.cb_ConfigDev->cd_BoardAddr);
+        MakeFunctions(DeviceTreeBase, relFuncTable, binding.cb_ConfigDev->cd_BoardAddr);
         
         DeviceTreeBase->dt_Node.lib_Node.ln_Type = NT_RESOURCE;
         DeviceTreeBase->dt_Node.lib_Node.ln_Pri = 120;
