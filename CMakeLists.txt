@@ -17,3 +17,4 @@ add_subdirectory(emmc.device)
 
 # Contribs
 add_subdirectory(Emu68Contribs/Emu68Info)
+add_subdirectory(Emu68Contribs/ListDeviceTree)
