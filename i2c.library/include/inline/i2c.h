@@ -37,11 +37,11 @@ typedef ULONG _sfdc_vararg;
       , I2C_BASE_NAME)
 
 #define SendI2C(___addr, ___number, ___i2cdata) \
-      LP3(0x36, ULONG, SendI2C , UBYTE, ___addr, d0, UWORD, ___number, d1, UBYTE, ___i2cdata, a0,\
+      LP3(0x36, ULONG, SendI2C , UBYTE, ___addr, d0, UWORD, ___number, d1, UBYTE *, ___i2cdata, a0,\
       , I2C_BASE_NAME)
 
 #define ReceiveI2C(___addr, ___number, ___i2cdata) \
-      LP3(0x3c, ULONG, ReceiveI2C , UBYTE, ___addr, d0, UWORD, ___number, d1, UBYTE, ___i2cdata, a0,\
+      LP3(0x3c, ULONG, ReceiveI2C , UBYTE, ___addr, d0, UWORD, ___number, d1, UBYTE *, ___i2cdata, a0,\
       , I2C_BASE_NAME)
 
 #define GetI2COpponent() \
