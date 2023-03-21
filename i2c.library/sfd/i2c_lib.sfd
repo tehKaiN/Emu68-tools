@@ -1,0 +1,19 @@
+==id $Id: i2c_lib.sfd 0.1.0 $
+* "i2c.library"
+==base _I2C_Base
+==basetype APTR
+==libname i2c
+==include <exec/types.h>
+==bias 30
+==public
+BYTE AllocI2C(UBYTE Delay_Type, char *Name) (D0,A0)
+void FreeI2C() ()
+ULONG SetI2CDelay(ULONG ticks) (D0)
+void InitI2C() ()
+ULONG SendI2C(UBYTE addr, UWORD number, UBYTE i2cdata)(D0,D1,A0)
+ULONG ReceiveI2C(UBYTE addr, UWORD number, UBYTE i2cdata) (D0,D1,A0)
+STRPTR GetI2COpponent() ()
+STRPTR I2CErrText(ULONG errnum) (D0)
+void ShutDownI2C() ()
+BYTE BringBackI2C() ()
+==end

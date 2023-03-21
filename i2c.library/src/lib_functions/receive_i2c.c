@@ -6,7 +6,7 @@
 #include <proto/exec.h>
 #include <common/endian.h>
 #include <common/bcm_i2c.h>
-#include <i2c_base.h>
+#include <i2c_private.h>
 
 ULONG ReceiveI2C(
 	UBYTE addr asm("d0"),

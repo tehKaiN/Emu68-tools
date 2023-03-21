@@ -1,12 +1,13 @@
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+#ifndef LIBRARIES_I2C_H
+#define LIBRARIES_I2C_H
 
-#ifndef _BASE_H
-#define _BASE_H
+#ifndef DOS_DOS_H
+#include <dos/dos.h>
+#endif
 
-#include <exec/types.h>
+#ifndef EXEC_LIBRARIES_H
 #include <exec/libraries.h>
+#endif
 
 // I2C library interface taken from i2clib40 package on Aminet
 
@@ -73,48 +74,4 @@ struct I2C_Base
     APTR I2cHwRegs;
 };
 
-#define MANUFACTURER_ID     0x6d73
-#define PRODUCT_ID          0x01
-#define SERIAL_NUMBER       0x4c32
-#define LIB_VERSION         40
-#define LIB_REVISION        0
-#define LIB_PRIORITY        0
-
-#define LIB_POSSIZE         (sizeof(struct I2C_Base))
-#define LIB_NEGSIZE         (4*6)
-
-BYTE AllocI2C(
-    UBYTE Delay_Type asm("d0"),
-    char *Name asm("a0"),
-    struct I2C_Base *i2cBase asm("a6")
-);
-
-void FreeI2C(struct I2C_Base *i2cBase asm("a6"));
-
-ULONG SetI2CDelay(ULONG ticks asm("d0"), struct I2C_Base *i2cBase asm("a6"));
-
-void InitI2C(struct I2C_Base *i2cBase asm("a6"));
-
-ULONG SendI2C(
-    UBYTE addr asm("d0"),
-    UWORD number asm("d1"),
-    UBYTE i2cdata[] asm("a0"),
-    struct I2C_Base *i2cBase asm("a6")
-);
-
-ULONG ReceiveI2C(
-    UBYTE addr asm("d0"),
-    UWORD number asm("d1"),
-    UBYTE i2cdata[] asm("a0"),
-    struct I2C_Base *i2cBase asm("a6")
-);
-
-STRPTR GetI2COpponent(struct I2C_Base *i2cBase asm("a6"));
-
-STRPTR I2CErrText(ULONG errnum asm("d0"), struct I2C_Base *i2cBase asm("a6"));
-
-void ShutDownI2C(struct I2C_Base *i2cBase asm("a6"));
-
-BYTE BringBackI2C(struct I2C_Base *i2cBase asm("a6"));
-
-#endif /* _BASE_H */
+#endif /* LIBRARIES_I2C_H */

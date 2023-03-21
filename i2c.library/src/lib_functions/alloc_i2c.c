@@ -6,7 +6,7 @@
 #include <proto/exec.h>
 #include <common/endian.h>
 #include <common/bcm_i2c.h>
-#include <i2c_base.h>
+#include <i2c_private.h>
 
 BYTE AllocI2C(
 	UBYTE Delay_Type asm("d0"),
