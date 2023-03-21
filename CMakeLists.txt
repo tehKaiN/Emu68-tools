@@ -4,6 +4,7 @@ project(Emu68-tools VERSION 0.1.0)
 include(cmake/verstring.cmake)
 get_verstring(VERSTRING)
 
+add_subdirectory(common)
 add_subdirectory(devicetree.resource)
 add_subdirectory(sdcard.device)
 add_subdirectory(VideoCore.card)
@@ -14,6 +15,7 @@ add_subdirectory(Buddhabrot)
 add_subdirectory(VC4Tweak)
 add_subdirectory(wifipi.device)
 add_subdirectory(emmc.device)
+add_subdirectory(i2c.library)
 
 # Contribs
 add_subdirectory(Emu68Contribs/Emu68Info)
