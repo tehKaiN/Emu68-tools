@@ -10,5 +10,5 @@
 
 void ShutDownI2C(struct I2C_Base *i2cBase asm("a6"))
 {
-
+	// TODO: set up the usage lock which can only be removed by BringBackI2C
 }

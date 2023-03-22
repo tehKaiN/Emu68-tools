@@ -17,16 +17,19 @@
 #define LIB_POSSIZE         (sizeof(struct I2C_Base))
 #define LIB_NEGSIZE         (4*6)
 
+// Deprecated, called internally as of original v40, shouldn't be called by end-user
 BYTE AllocI2C(
     UBYTE Delay_Type asm("d0"),
     char *Name asm("a0"),
     struct I2C_Base *i2cBase asm("a6")
 );
 
+// Deprecated, called internally as of original v40, shouldn't be called by end-user
 void FreeI2C(struct I2C_Base *i2cBase asm("a6"));
 
 ULONG SetI2CDelay(ULONG ticks asm("d0"), struct I2C_Base *i2cBase asm("a6"));
 
+// Deprecated, called internally as of original v40, shouldn't be called by end-user
 void InitI2C(struct I2C_Base *i2cBase asm("a6"));
 
 ULONG SendI2C(

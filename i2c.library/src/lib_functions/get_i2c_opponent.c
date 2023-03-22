@@ -10,5 +10,6 @@
 
 STRPTR GetI2COpponent(struct I2C_Base *i2cBase asm("a6"))
 {
-
+	// Return id string of other process blocking hardware i2c - possibly n/a on pistorm
+	return NULL;
 }

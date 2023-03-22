@@ -10,5 +10,5 @@
 
 BYTE BringBackI2C(struct I2C_Base *i2cBase asm("a6"))
 {
-
+	// TODO: free the usage lock which was set up by ShutDownI2C
 }

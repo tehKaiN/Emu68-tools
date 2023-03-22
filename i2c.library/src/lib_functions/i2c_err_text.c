@@ -10,5 +10,25 @@
 
 STRPTR I2CErrText(ULONG errnum asm("d0"), struct I2C_Base *i2cBase asm("a6"))
 {
+	// Original errors from i2clib40src:
+	// "OK"
+	// // I/O errors:
+	// "data rejected"
+	// "no reply"
+	// "SDA trashed"
+	// "SDA always LO"
+	// "SDA always HI"
+	// "hardware is busy"
+	// // allocation errors
+	// "port is busy"
+	// "port bits are busy"
+	// 'no '
+	// "misc.resource"
+	// "temporary shutdown"
+  // // extras:
+	// "error"
+	// "???"
 
+	// According to autodocs, errors should be at most 20-character long
+	return errnum == I2C_OK ? "OK" : "???";
 }
