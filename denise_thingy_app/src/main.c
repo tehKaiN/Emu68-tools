@@ -6,6 +6,7 @@
 #include <clib/exec_protos.h>
 #include <clib/dos_protos.h>
 #include <inline/i2c.h>
+#include <libraries/i2c.h>
 
 struct I2C_Base *I2C_Base = 0;
 
@@ -17,9 +18,10 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-    InitI2C();
 	static uint8_t pData[5] = {0x80, 0xAF, 0xA5, 0x8D, 0x14};
     SendI2C(0x78, 5, pData);
+
+    Printf("Send calls %ld, sent bytes: %ld\n", I2C_Base->SendCalls, I2C_Base->SendBytes);
 
     CloseLibrary((struct Library*)I2C_Base);
     return EXIT_SUCCESS;

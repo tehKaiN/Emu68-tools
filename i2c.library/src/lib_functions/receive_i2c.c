@@ -8,6 +8,8 @@
 #include <common/bcm_i2c.h>
 #include <i2c_private.h>
 
+#define RESULT(isError, ubIoError, ubAllocError) ((ubAllocError << 16) | (ubIoError << 8) | (isError))
+
 ULONG ReceiveI2C(
 	UBYTE addr asm("d0"),
 	UWORD number asm("d1"),
@@ -15,6 +17,9 @@ ULONG ReceiveI2C(
 	struct I2C_Base *i2cBase asm("a6")
 )
 {
-	// TODO
-
+	// TODO: Semaphore shared with ReceiveI2C
+	// TODO: Implement
+	++i2cBase->RecvCalls;
+	UBYTE isError = 1, ubIoError = I2C_OK, ubAllocError = I2C_OK;
+	return RESULT(isError, ubIoError, ubAllocError);
 }

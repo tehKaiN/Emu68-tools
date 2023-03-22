@@ -84,6 +84,8 @@ static struct I2C_Base * OpenLib(ULONG version asm("d0"), struct I2C_Base *I2C_B
     struct ExecBase *SysBase = *(struct ExecBase **)4;
     I2C_Base->LibNode.lib_OpenCnt++;
     I2C_Base->LibNode.lib_Flags &= ~LIBF_DELEXP;
+    AllocI2C(0, NULL, I2C_Base);
+    InitI2C(I2C_Base);
 
     return I2C_Base;
 }
@@ -121,6 +123,7 @@ static ULONG ExpungeLib(struct I2C_Base *I2C_Base asm("a6"))
 
 static ULONG CloseLib(struct I2C_Base *I2C_Base asm("a6"))
 {
+    FreeI2C(I2C_Base);
     if (I2C_Base->LibNode.lib_OpenCnt != 0)
         I2C_Base->LibNode.lib_OpenCnt--;
 

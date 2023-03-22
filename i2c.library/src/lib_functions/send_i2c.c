@@ -17,6 +17,8 @@ ULONG SendI2C(
 	struct I2C_Base *i2cBase asm("a6")
 )
 {
+	// TODO: Semaphore shared with ReceiveI2C
+
 	// bcm expects read/write bit to be omitted from address
 	ubAddress >>= 1;
 
@@ -43,8 +45,11 @@ ULONG SendI2C(
 
 	if((ulStatus & (I2C_S_ERR | I2C_S_CLKT)) || uwDataSize) {
 		isError = 1;
+		++i2cBase->Unheard;
 		ubIoError = I2C_REJECT;
 	}
 
+	++i2cBase->SendCalls;
+	i2cBase->SendBytes += uwBytesCopied;
 	return RESULT(isError, ubIoError, ubAllocError);
 }
