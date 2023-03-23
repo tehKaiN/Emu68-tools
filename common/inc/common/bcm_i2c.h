@@ -5,6 +5,10 @@
 #ifndef BCM_I2C_H
 #define BCM_I2C_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <exec/types.h>
 
 // Based on BCM2835 ARM Peripherals, chapter 3: I2C
@@ -41,5 +45,9 @@ typedef struct tI2cRegs {
 	ULONG DEL;
 	ULONG CLKT;
 } tI2cRegs;
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // BCM_I2C_H

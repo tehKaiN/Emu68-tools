@@ -5,6 +5,10 @@
 #ifndef BCM_GPIO_H
 #define BCM_GPIO_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <exec/types.h>
 
 // GPIO alternative functions ordered by pin function
@@ -67,5 +71,9 @@ typedef struct tGpioRegs {
 	ULONG RESERVED11;
 	ULONG TEST;
 } tGpioRegs;
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // BCM_GPIO_H
