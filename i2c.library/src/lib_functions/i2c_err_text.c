@@ -8,7 +8,10 @@
 #include <common/bcm_i2c.h>
 #include <i2c_private.h>
 
-STRPTR I2CErrText(ULONG errnum asm("d0"), struct I2C_Base *i2cBase asm("a6"))
+STRPTR I2CErrText(
+	REGARG(ULONG errnum, "d0"),
+	REGARG(struct I2C_Base *i2cBase, "a6")
+)
 {
 	// Original errors from i2clib40src:
 	// "OK"

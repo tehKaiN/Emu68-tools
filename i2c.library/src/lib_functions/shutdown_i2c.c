@@ -8,7 +8,7 @@
 #include <common/bcm_i2c.h>
 #include <i2c_private.h>
 
-void ShutDownI2C(struct I2C_Base *i2cBase asm("a6"))
+void ShutDownI2C(REGARG(struct I2C_Base *i2cBase, "a6"))
 {
 	// TODO: set up the usage lock which can only be removed by BringBackI2C
 }

@@ -5,6 +5,7 @@
 #ifndef I2C_PRIVATE_H
 #define I2C_PRIVATE_H
 
+#include <common/compiler.h>
 #include <libraries/i2c.h>
 
 #define MANUFACTURER_ID     0x6d73
@@ -19,39 +20,39 @@
 
 // Deprecated, called internally as of original v40, shouldn't be called by end-user
 BYTE AllocI2C(
-    UBYTE Delay_Type asm("d0"),
-    char *Name asm("a0"),
-    struct I2C_Base *i2cBase asm("a6")
+    REGARG(UBYTE Delay_Type, "d0"),
+    REGARG(char *Name, "a0"),
+    REGARG(struct I2C_Base *i2cBase, "a6")
 );
 
 // Deprecated, called internally as of original v40, shouldn't be called by end-user
-void FreeI2C(struct I2C_Base *i2cBase asm("a6"));
+void FreeI2C(REGARG(struct I2C_Base *i2cBase, "a6"));
 
-ULONG SetI2CDelay(ULONG ticks asm("d0"), struct I2C_Base *i2cBase asm("a6"));
+ULONG SetI2CDelay(REGARG(ULONG ticks, "d0"), REGARG(struct I2C_Base *i2cBase, "a6"));
 
 // Deprecated, called internally as of original v40, shouldn't be called by end-user
-void InitI2C(struct I2C_Base *i2cBase asm("a6"));
+void InitI2C(REGARG(struct I2C_Base *i2cBase, "a6"));
 
 ULONG SendI2C(
-    UBYTE addr asm("d0"),
-    UWORD number asm("d1"),
-    UBYTE i2cdata[] asm("a0"),
-    struct I2C_Base *i2cBase asm("a6")
+    REGARG(UBYTE addr, "d0"),
+    REGARG(UWORD number, "d1"),
+    REGARG(UBYTE i2cdata[], "a0"),
+    REGARG(struct I2C_Base *i2cBase, "a6")
 );
 
 ULONG ReceiveI2C(
-    UBYTE addr asm("d0"),
-    UWORD number asm("d1"),
-    UBYTE i2cdata[] asm("a0"),
-    struct I2C_Base *i2cBase asm("a6")
+    REGARG(UBYTE addr, "d0"),
+    REGARG(UWORD number, "d1"),
+    REGARG(UBYTE i2cdata[], "a0"),
+    REGARG(struct I2C_Base *i2cBase, "a6")
 );
 
-STRPTR GetI2COpponent(struct I2C_Base *i2cBase asm("a6"));
+STRPTR GetI2COpponent(REGARG(struct I2C_Base *i2cBase, "a6"));
 
-STRPTR I2CErrText(ULONG errnum asm("d0"), struct I2C_Base *i2cBase asm("a6"));
+STRPTR I2CErrText(REGARG(ULONG errnum, "d0"), REGARG(struct I2C_Base *i2cBase, "a6"));
 
-void ShutDownI2C(struct I2C_Base *i2cBase asm("a6"));
+void ShutDownI2C(REGARG(struct I2C_Base *i2cBase, "a6"));
 
-BYTE BringBackI2C(struct I2C_Base *i2cBase asm("a6"));
+BYTE BringBackI2C(REGARG(struct I2C_Base *i2cBase, "a6"));
 
 #endif // I2C_PRIVATE_H

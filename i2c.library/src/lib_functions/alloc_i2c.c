@@ -14,9 +14,9 @@
 #define I2C_SPEED 100000
 
 BYTE AllocI2C(
-	__attribute__((unused)) UBYTE Delay_Type asm("d0"),
-	__attribute__((unused)) char *Name asm("a0"),
-	struct I2C_Base *i2cBase asm("a6")
+	__attribute__((unused)) REGARG(UBYTE Delay_Type, "d0"),
+	__attribute__((unused)) REGARG(char *Name, "a0"),
+	REGARG(struct I2C_Base *i2cBase, "a6")
 )
 {
 	if(i2cBase->LibNode.lib_OpenCnt != 1) {

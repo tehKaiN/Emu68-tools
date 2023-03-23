@@ -11,10 +11,10 @@
 #define RESULT(isError, ubIoError, ubAllocError) ((ubAllocError << 16) | (ubIoError << 8) | (isError))
 
 ULONG SendI2C(
-	UBYTE ubAddress asm("d0"),
-	UWORD uwDataSize asm("d1"),
-	UBYTE pData[] asm("a0"),
-	struct I2C_Base *i2cBase asm("a6")
+	REGARG(UBYTE ubAddress, "d0"),
+	REGARG(UWORD uwDataSize, "d1"),
+	REGARG(UBYTE pData[], "a0"),
+	REGARG(struct I2C_Base *i2cBase, "a6")
 )
 {
 	// TODO: Semaphore shared with ReceiveI2C
@@ -29,7 +29,7 @@ ULONG SendI2C(
 	wr32le(&pI2c->C, I2C_C_CLEAR_FIFO_ONE_SHOT);
 	wr32le(&pI2c->S, I2C_S_CLKT | I2C_S_ERR | I2C_S_DONE);
 	wr32le(&pI2c->DLEN, uwDataSize);
-	wr32le(&pI2c->C, I2C_C_I2CEN | I2C_C_ST);
+	wr32le(&pI2c->C, I2C_C_I2CEN | I2C_C_ST | I2C_C_WRITE_PACKET);
 
 	UWORD uwBytesCopied = 0;
 	while(!(rd32le(&pI2c->S) & I2C_S_DONE)) {

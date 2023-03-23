@@ -8,7 +8,7 @@
 #include <common/bcm_i2c.h>
 #include <i2c_private.h>
 
-STRPTR GetI2COpponent(struct I2C_Base *i2cBase asm("a6"))
+STRPTR GetI2COpponent(REGARG(struct I2C_Base *i2cBase, "a6"))
 {
 	// Return id string of other process blocking hardware i2c - possibly n/a on pistorm
 	return NULL;

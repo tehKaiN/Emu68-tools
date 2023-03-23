@@ -11,10 +11,10 @@
 #define RESULT(isError, ubIoError, ubAllocError) ((ubAllocError << 16) | (ubIoError << 8) | (isError))
 
 ULONG ReceiveI2C(
-	UBYTE addr asm("d0"),
-	UWORD number asm("d1"),
-	UBYTE i2cdata[] asm("a0"),
-	struct I2C_Base *i2cBase asm("a6")
+	REGARG(UBYTE ubAddress, "d0"),
+	REGARG(UWORD uwDataSize, "d1"),
+	REGARG(UBYTE pData[], "a0"),
+	REGARG(struct I2C_Base *i2cBase, "a6")
 )
 {
 	// TODO: Semaphore shared with ReceiveI2C

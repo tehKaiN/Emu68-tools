@@ -8,7 +8,10 @@
 #include <common/bcm_i2c.h>
 #include <i2c_private.h>
 
-ULONG SetI2CDelay(ULONG ticks asm("d0"), struct I2C_Base *i2cBase asm("a6"))
+ULONG SetI2CDelay(
+	REGARG(ULONG ticks, "d0"),
+	REGARG(struct I2C_Base *i2cBase, "a6")
+)
 {
 	// There's no way to reliably support i2c freq tuning by specifying idle cia
 	// cycles between SCL edges.

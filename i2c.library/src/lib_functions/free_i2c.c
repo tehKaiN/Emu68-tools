@@ -8,7 +8,7 @@
 #include <common/bcm_i2c.h>
 #include <i2c_private.h>
 
-void FreeI2C(struct I2C_Base *i2cBase asm("a6"))
+void FreeI2C(REGARG(struct I2C_Base *i2cBase, "a6"))
 {
 	// TODO: deconfigure gpio/i2c?
 }

@@ -6,6 +6,6 @@
 #include <proto/exec.h>
 #include <i2c_private.h>
 
-void InitI2C(struct I2C_Base *i2cBase asm("a6"))
+void InitI2C(REGARG(struct I2C_Base *i2cBase, "a6"))
 {
 }
