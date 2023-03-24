@@ -36,8 +36,8 @@ BYTE AllocI2C(
 
 	// hardcoded BSC0 on pins 44,45
 	// TODO: get from devicetree
-	volatile tI2cRegs *pI2c = g_pI2c0;
-	volatile tGpioRegs *pGpio = g_pGpio;
+	volatile tI2cRegs *pI2c = BCM_I2C0;
+	volatile tGpioRegs *pGpio = BCM_GPIO;
 	UBYTE ubPinSda = 44;
 	UBYTE ubPinScl = 45;
 	i2cBase->I2cHwRegs = (APTR)pI2c;

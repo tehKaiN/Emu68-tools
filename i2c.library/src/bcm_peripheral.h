@@ -8,9 +8,11 @@
 #include <common/bcm_gpio.h>
 #include <common/bcm_i2c.h>
 
-volatile tGpioRegs * const g_pGpio;
-volatile tI2cRegs * const g_pI2c0;
-volatile tI2cRegs * const g_pI2c1;
-volatile tI2cRegs * const g_pI2c2;
+#define BCM2708_PERI_BASE 0xF2000000
+
+#define BCM_GPIO ((volatile tGpioRegs*)(BCM2708_PERI_BASE + 0x200000));
+#define BCM_I2C0 (volatile tI2cRegs*)(BCM2708_PERI_BASE + 0x205000);
+#define BCM_I2C1 (volatile tI2cRegs*)(BCM2708_PERI_BASE + 0x804000);
+#define BCM_I2C2 (volatile tI2cRegs*)(BCM2708_PERI_BASE + 0x805000); // I2C iniside HDMI
 
 #endif // BCM_PERIPHERAL_H
