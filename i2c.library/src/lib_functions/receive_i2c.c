@@ -32,7 +32,7 @@ ULONG ReceiveI2C(
 
 	UWORD uwBytesRead = 0;
 	while(!(rd32le(&pI2c->S) & I2C_S_DONE)) {
-		while(uwDataSize && (rd32le(&pI2c->S) & I2C_S_TXD)) {
+		while(uwDataSize && (rd32le(&pI2c->S) & I2C_S_RXD)) {
 			*(pData++) = rd32le(&pI2c->FIFO) & 0xFF;
 			uwBytesRead++;
 			--uwDataSize;
@@ -40,12 +40,10 @@ ULONG ReceiveI2C(
 	}
 
 	// Transfer done, now read all pending stuff in fifo
-	while(uwDataSize && (rd32le(&pI2c->S) & I2C_S_TXD)) {
-		while(uwDataSize && (rd32le(&pI2c->S) & I2C_S_TXD)) {
-			*(pData++) = rd32le(&pI2c->FIFO) & 0xFF;
-			uwBytesRead++;
-			--uwDataSize;
-		}
+	while(uwDataSize && (rd32le(&pI2c->S) & I2C_S_RXD)) {
+		*(pData++) = rd32le(&pI2c->FIFO) & 0xFF;
+		uwBytesRead++;
+		--uwDataSize;
 	}
 
 	ULONG ulStatus = rd32le(&pI2c->S);
