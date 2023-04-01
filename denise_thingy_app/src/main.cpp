@@ -16,10 +16,11 @@
 static bool waitForNotBusy(tI2c &I2c, uint8_t ubFpgaAddr)
 {
 	using namespace std::chrono_literals;
+	using namespace deniseThingy;
 
 	uint32_t ulStatus;
 	do {
-		deniseThingy::time::sleepFor(10ms);
+		time::sleepFor(10ms);
 		I2c.write(ubFpgaAddr, {0x3C, 0x00, 0x00 , 0x00});
 		bool isRead = I2c.read(
 			ubFpgaAddr, reinterpret_cast<uint8_t*>(&ulStatus), sizeof(ulStatus)
@@ -44,6 +45,7 @@ static uint8_t reverseByte(uint8_t ubData) {
 int main(int lArgCount, const char *pArgs[])
 {
 	using namespace std::chrono_literals;
+	using namespace deniseThingy;
 
 	if(lArgCount < 4) {
 		printf("Usage:\n\t%s i2cPort i2cSlaveAddrHex /path/to/cfg.bit\n", pArgs[0]);
@@ -85,15 +87,15 @@ int main(int lArgCount, const char *pArgs[])
 
 	printf("Resetting FPGA...\n");
 	// TODO: CRESET:=0
-	deniseThingy::time::sleepFor(1s);
+	time::sleepFor(1s);
 	I2c->write(FpgaAddr, {0xA4, 0xC6, 0xF4, 0x8A});
 	// TODO: CRESET:=1
-	deniseThingy::time::sleepFor(10ms);
+	time::sleepFor(10ms);
 
 	// 1. Read ID (E0)
 	printf("Checking device id...\n");
 	I2c->write(FpgaAddr, {0xE0, 0x00, 0x00, 0x00});
-	std::array<uint8_t, 4> DevId;
+	std::array<uint8_t, 4> DevId {0};
 	bool isRead = I2c->read(FpgaAddr, DevId);
 	if(!isRead) {
 		printf("ERR: Can't read data from I2C device\n");
@@ -113,7 +115,7 @@ int main(int lArgCount, const char *pArgs[])
 	// 2. Enable configuration interface (C6)
 	printf("Initiating programming...\n");
 	I2c->write(FpgaAddr, {0xC6, 0x00, 0x00, 0x00});
-	deniseThingy::time::sleepFor(1ms);
+	time::sleepFor(1ms);
 
 	// 3. Read status register (3C) and wait for busy bit go to 0
 	if(!waitForNotBusy(*I2c, FpgaAddr)) {
@@ -123,7 +125,7 @@ int main(int lArgCount, const char *pArgs[])
 
 	// 4. LSC_INIT_ADDRESS (46)
 	I2c->write(FpgaAddr, {0x46, 0x00, 0x00 , 0x00});
-	deniseThingy::time::sleepFor(100ms);
+	time::sleepFor(100ms);
 
 	// 5. Program SRAM parts (82)
 	uint32_t lRowIdx;
@@ -139,11 +141,11 @@ int main(int lArgCount, const char *pArgs[])
 			Packet.push_back(RowByte);
 		}
 		I2c->write(FpgaAddr, Packet);
-		deniseThingy::time::sleepFor(100us);
+		time::sleepFor(100us);
 
 		// Some kind of dummy packet
 		I2c->write(FpgaAddr, {0x00, 0x00, 0x00, 0x00});
-		deniseThingy::time::sleepFor(100us);
+		time::sleepFor(100us);
 	}
 	printf("\n");
 
