@@ -22,8 +22,8 @@ extern "C" {
 #define GPIO29_AF_I2C0_SCL GPIO_AF_0
 
 #define GPIO44_AF_I2C0_SDA GPIO_AF_1
-#define GPIO45_AF_I2C0_SCL GPIO_AF_1
 #define GPIO44_AF_I2C1_SDA GPIO_AF_2
+#define GPIO45_AF_I2C0_SCL GPIO_AF_1
 #define GPIO45_AF_I2C1_SCL GPIO_AF_2
 
 typedef enum tGpioAlternativeFunction {
