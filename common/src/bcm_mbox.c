@@ -97,9 +97,10 @@ uint32_t get_clock_rate(
     FBReq[6] = 0;
     FBReq[7] = 0;
 
-    CacheClearE(FBReq, len, CACRF_ClearD);
+    CachePreDMA(FBReq, &len, 0);
     mbox_send(8, (uint32_t)FBReq, mailbox_base);
     uint32_t resp = mbox_recv(8, mailbox_base);
+    CachePostDMA(FBReq, &len, 0);
 
     return LE32(FBReq[6]);
 }
@@ -124,9 +125,10 @@ uint32_t set_clock_rate(
     FBReq[7] = 0;
     FBReq[8] = 0;
 
-    CacheClearE(FBReq, len, CACRF_ClearD);
+    CachePreDMA(FBReq, &len, 0);
     mbox_send(8, (uint32_t)FBReq, mailbox_base);
     uint32_t reply = mbox_recv(8, mailbox_base);
+    CachePostDMA(FBReq, &len, 0);
 
     return LE32(FBReq[6]);
 }
@@ -149,9 +151,10 @@ uint32_t get_clock_state(
     FBReq[6] = 0;
     FBReq[7] = 0;
 
-    CacheClearE(FBReq, len, CACRF_ClearD);
+    CachePreDMA(FBReq, &len, 0);
     mbox_send(8, (uint32_t)FBReq, mailbox_base);
     uint32_t reply = mbox_recv(8, mailbox_base);
+    CachePostDMA(FBReq, &len, 0);
 
     return LE32(FBReq[6]);
 }
@@ -175,9 +178,10 @@ uint32_t set_clock_state(
     FBReq[6] = LE32(state);
     FBReq[7] = 0;
 
-    CacheClearE(FBReq, len, CACRF_ClearD);
+    CachePreDMA(FBReq, &len, 0);
     mbox_send(8, (uint32_t)FBReq, mailbox_base);
     uint32_t reply = mbox_recv(8, mailbox_base);
+    CachePostDMA(FBReq, &len, 0);
 
     return LE32(FBReq[6]);
 }
@@ -200,9 +204,10 @@ uint32_t get_power_state(
     FBReq[6] = 0;
     FBReq[7] = 0;
 
-    CacheClearE(FBReq, len, CACRF_ClearD);
+    CachePreDMA(FBReq, &len, 0);
     mbox_send(8, (uint32_t)FBReq, mailbox_base);
     uint32_t reply = mbox_recv(8, mailbox_base);
+    CachePostDMA(FBReq, &len, 0);
 
     return LE32(FBReq[6]);
 }
@@ -227,9 +232,10 @@ uint32_t set_power_state(
     FBReq[7] = 0;
     FBReq[8] = 0;
 
-    CacheClearE(FBReq, len, CACRF_ClearD);
+    CachePreDMA(FBReq, &len, 0);
     mbox_send(8, (uint32_t)FBReq, mailbox_base);
     uint32_t reply = mbox_recv(8, mailbox_base);
+    CachePostDMA(FBReq, &len, 0);
 
     return LE32(FBReq[6]);
 }
@@ -252,9 +258,10 @@ uint32_t get_extgpio_state(
     FBReq[6] = 0;
     FBReq[7] = 0;
 
-    CacheClearE(FBReq, len, CACRF_ClearD);
+    CachePreDMA(FBReq, &len, 0);
     mbox_send(8, (uint32_t)FBReq, mailbox_base);
     uint32_t reply = mbox_recv(8, mailbox_base);
+    CachePostDMA(FBReq, &len, 0);
 
     return LE32(FBReq[6]);
 }
