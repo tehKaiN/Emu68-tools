@@ -23,7 +23,7 @@ extern struct ExecBase *SysBase;
 static bool waitForNotBusy(tI2c &I2c, uint8_t ubFpgaAddr)
 {
 	using namespace std::chrono_literals;
-	using namespace deniseThingy;
+	using namespace latticeI2cProg;
 
 	uint32_t ulStatus;
 	do {
@@ -52,7 +52,7 @@ static uint8_t reverseByte(uint8_t ubData) {
 int main(int lArgCount, const char *pArgs[])
 {
 	using namespace std::chrono_literals;
-	using namespace deniseThingy;
+	using namespace latticeI2cProg;
 
 	if(lArgCount < 3) {
 		printf("Usage:\n\t%s i2cSlaveAddrHex /path/to/cfg.bit [-id]\n", pArgs[0]);

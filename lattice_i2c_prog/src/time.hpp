@@ -10,7 +10,7 @@ extern "C" {
 #include <clib/dos_protos.h>
 }
 
-namespace deniseThingy::time {
+namespace latticeI2cProg::time {
 
 template<typename t_tDuration>
 void sleepFor(t_tDuration Duration)

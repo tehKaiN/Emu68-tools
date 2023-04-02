@@ -16,7 +16,7 @@ add_subdirectory(VC4Tweak)
 add_subdirectory(wifipi.device)
 add_subdirectory(emmc.device)
 add_subdirectory(i2c.library)
-add_subdirectory(denise_thingy_app)
+add_subdirectory(lattice_i2c_prog)
 
 # Contribs
 add_subdirectory(Emu68Contribs/Emu68Info)

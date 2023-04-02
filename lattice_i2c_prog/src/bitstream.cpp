@@ -46,13 +46,13 @@ tBitstream::tBitstream(const std::string &FilePath)
 	}
 
 	uint16_t uwSectionId;
-	deniseThingy::file::readBigEndian(FileIn, uwSectionId);
+	latticeI2cProg::file::readBigEndian(FileIn, uwSectionId);
 	if(uwSectionId == SECTION_ASCII_COMMENTS_BEGIN) {
 		// Read comments
 		std::string Comment;
 		char c;
 		while(!FileIn.eof()) {
-			deniseThingy::file::readBigEndian(FileIn, c);
+			latticeI2cProg::file::readBigEndian(FileIn, c);
 			if(c == '\xFF') {
 				break;
 			}
@@ -66,7 +66,7 @@ tBitstream::tBitstream(const std::string &FilePath)
 		}
 
 		// Continue reading until we hit preamble
-		deniseThingy::file::readBigEndian(FileIn, uwSectionId);
+		latticeI2cProg::file::readBigEndian(FileIn, uwSectionId);
 	}
 
 	if(uwSectionId != SECTION_PREAMBLE_WORD_1) {
@@ -79,7 +79,7 @@ tBitstream::tBitstream(const std::string &FilePath)
 
 	// Read final part of preamble
 	uint16_t uwPreambleEnd;
-	deniseThingy::file::readBigEndian(FileIn, uwPreambleEnd);
+	latticeI2cProg::file::readBigEndian(FileIn, uwPreambleEnd);
 	if(uwPreambleEnd != SECTION_PREAMBLE_WORD_2) {
 		// I want std::format so bad :(
 		std::stringstream ss;
@@ -104,10 +104,10 @@ tBitstream::tBitstream(const std::string &FilePath)
 				// No additional data
 				break;
 			case tBitstreamCmd::tId::LSC_VERIFY_ID:
-				deniseThingy::file::readData(FileIn, m_DeviceId.data(), m_DeviceId.size());
+				latticeI2cProg::file::readData(FileIn, m_DeviceId.data(), m_DeviceId.size());
 				break;
 			case tBitstreamCmd::tId::LSC_PROG_CNTRL0:
-				deniseThingy::file::readBigEndian(FileIn, m_ulCtlReg0);
+				latticeI2cProg::file::readBigEndian(FileIn, m_ulCtlReg0);
 				break;
 			case tBitstreamCmd::tId::LSC_PROG_INCR_RTI: {
 				// Store program data
@@ -123,8 +123,8 @@ tBitstream::tBitstream(const std::string &FilePath)
 					std::vector<uint8_t> vRow;
 					vRow.resize(26);
 					uint16_t uwCrc;
-					deniseThingy::file::readData(FileIn, vRow.data(), vRow.size());
-					deniseThingy::file::readBigEndian(FileIn, uwCrc);
+					latticeI2cProg::file::readData(FileIn, vRow.data(), vRow.size());
+					latticeI2cProg::file::readBigEndian(FileIn, uwCrc);
 					if(uwCrc == 0) {
 						// I want std::format so bad :(
 						std::stringstream ss;
@@ -137,7 +137,7 @@ tBitstream::tBitstream(const std::string &FilePath)
 			} break;
 			case tBitstreamCmd::tId::ISC_PROGRAM_USERCODE:
 				// Read usercode, skip CRC
-				deniseThingy::file::readData(FileIn, m_UserCode.data(), m_UserCode.size());
+				latticeI2cProg::file::readData(FileIn, m_UserCode.data(), m_UserCode.size());
 				FileIn.seekg(2, std::ios::cur);
 				break;
 			case tBitstreamCmd::tId::ISC_PROGRAM_DONE:
@@ -157,7 +157,7 @@ tBitstream::tBitstream(const std::string &FilePath)
 tBitstreamCmd::tBitstreamCmd(std::ifstream &FileIn)
 {
 	uint32_t ulCmdRaw;
-	deniseThingy::file::readBigEndian(FileIn, ulCmdRaw);
+	latticeI2cProg::file::readBigEndian(FileIn, ulCmdRaw);
 	m_eId = tBitstreamCmd::tId(ulCmdRaw >> 24);
 	m_Operands[0] = (ulCmdRaw >> 16) & 0xFF;
 	m_Operands[1] = (ulCmdRaw >> 8) & 0xFF;

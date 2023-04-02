@@ -8,7 +8,7 @@
 #include <fstream>
 #include <common/endian.hpp>
 
-namespace deniseThingy::file {
+namespace latticeI2cProg::file {
 
 template<typename t_tStream, typename t_tData>
 t_tStream readLittleEndian(t_tStream &File, t_tData &Data)
@@ -30,6 +30,6 @@ void readData(t_tStream &File, t_tData *pData, size_t ElementCount)
 	File.read(reinterpret_cast<char*>(pData), ElementCount * sizeof(*pData));
 }
 
-} // namespace deniseThingy::file
+} // namespace latticeI2cProg::file
 
 #endif // _FILE_HPP_
