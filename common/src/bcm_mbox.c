@@ -37,7 +37,7 @@
 
 static uint32_t mbox_recv(uint32_t channel, uint32_t *mailbox_base)
 {
-	volatile uint32_t *mbox_read = (uint32_t*)(mailbox_base);
+	volatile uint32_t *mbox_read = mailbox_base;
 	volatile uint32_t *mbox_status = (uint32_t*)((uintptr_t)mailbox_base + 0x18);
 	uint32_t response, status;
 
@@ -273,14 +273,15 @@ uint32_t set_extgpio_state(
     FBReq[1] = 0;               // Request
     FBReq[2] = LE32(CMD_SET_GPIO_STATE);
     FBReq[3] = LE32(8);
-    FBReq[4] = 0;
+    FBReq[4] = LE32(8);
     FBReq[5] = LE32(128 + gpio);
     FBReq[6] = LE32(state);
     FBReq[7] = 0;
 
-    CacheClearE(FBReq, len, CACRF_ClearD);
+    CachePreDMA(FBReq, &len, 0);
     mbox_send(8, (uint32_t)FBReq, mailbox_base);
     uint32_t reply = mbox_recv(8, mailbox_base);
+    CachePostDMA(FBReq, &len, 0);
 
     return LE32(FBReq[6]);
 }

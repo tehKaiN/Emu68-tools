@@ -8,6 +8,8 @@
 #include <common/endian.hpp>
 #include <common/bcm_mbox.h>
 #include <exec/types.h>
+#include <exec/memory.h>
+#include <proto/exec.h>
 #include "bitstream.hpp"
 #include "i2c.hpp"
 #include "time.hpp"
@@ -89,17 +91,22 @@ int main(int lArgCount, const char *pArgs[])
 		return EXIT_FAILURE;
 	}
 
-	uint32_t pMboxBuffer[8];
+	uint8_t *pMboxBufferFull = (uint8_t*)AllocMem(512, MEMF_FAST | MEMF_CLEAR);
+	uint8_t *pMboxBufferAligned = (uint8_t*)(((ULONG)pMboxBufferFull + 31) & ~31);
+	uint32_t *pMboxBuffer = (uint32_t*)pMboxBufferAligned;
 	uint32_t *pMboxBase = (uint32_t *)0xF200B880;
+
 	printf("Resetting FPGA...\n");
-	// TODO: CRESET:=0
+
+	// CRESET:=0
 	set_extgpio_state(
 		tExtGpio::CAM_GPIO, 0,
 		pMboxBuffer, pMboxBase, SysBase
 	);
 	time::sleepFor(1s);
 	I2c->write(FpgaAddr, {0xA4, 0xC6, 0xF4, 0x8A});
-	// TODO: CRESET:=1
+
+	// CRESET:=1
 	set_extgpio_state(
 		tExtGpio::CAM_GPIO, 1,
 		pMboxBuffer, pMboxBase, SysBase
