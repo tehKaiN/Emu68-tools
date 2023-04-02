@@ -12,4 +12,4 @@ add_executable(LatticeI2cProg ${i2c_updater_sources})
 target_link_libraries(LatticeI2cProg common amiga i2c)
 
 install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/LatticeI2cProg DESTINATION ./LatticeI2cProg/)
-install(FILES LatticeI2cProg.info DESTINATION ./LatticeI2cProg/)
+#install(FILES LatticeI2cProg.info DESTINATION ./LatticeI2cProg/)
