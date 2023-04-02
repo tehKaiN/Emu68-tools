@@ -18,7 +18,7 @@ extern "C" {
 
 #include <exec/execbase.h>
 
-// Taken from bcm2711-rpi-4-b.dts
+// Taken from decompiled bcm2711-rpi-4-b.dtb
 typedef enum tExtGpio {
     MBOX_EXT_GPIO_BT_ON,
     WL_ON,
