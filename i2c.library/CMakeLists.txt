@@ -33,4 +33,4 @@ target_compile_definitions(i2c.library PUBLIC
     LIBRARY_REVISION=${PROJECT_VERSION_MINOR}
     LIBRARY_PRIORITY=0)
 
-install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/i2c.library DESTINATION ./VideoCore/)
+install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/i2c.library DESTINATION ./I2C/)
