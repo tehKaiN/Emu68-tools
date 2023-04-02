@@ -33,16 +33,4 @@ target_compile_definitions(i2c.library PUBLIC
     LIBRARY_REVISION=${PROJECT_VERSION_MINOR}
     LIBRARY_PRIORITY=0)
 
-set(SFDC_PATH /opt/amiga/bin/sfdc)
-if(SFDC_PATH)
-    file(MAKE_DIRECTORY include/clib include/inline include/pragmas include/proto)
-    add_custom_command(
-        TARGET i2c.library POST_BUILD
-        COMMAND ${SFDC_PATH} --mode pragmas ${CMAKE_CURRENT_LIST_DIR}/sfd/i2c_lib.sfd > ${CMAKE_CURRENT_LIST_DIR}/include/pragmas/i2c_pragmas.h
-        COMMAND ${SFDC_PATH} --mode clib ${CMAKE_CURRENT_LIST_DIR}/sfd/i2c_lib.sfd > ${CMAKE_CURRENT_LIST_DIR}/include/clib/i2c_protos.h
-        COMMAND ${SFDC_PATH} --mode macros ${CMAKE_CURRENT_LIST_DIR}/sfd/i2c_lib.sfd > ${CMAKE_CURRENT_LIST_DIR}/include/inline/i2c.h
-        COMMAND ${SFDC_PATH} --mode proto ${CMAKE_CURRENT_LIST_DIR}/sfd/i2c_lib.sfd > ${CMAKE_CURRENT_LIST_DIR}/include/proto/i2c.h
-    )
-endif()
-
 install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/i2c.library DESTINATION ./VideoCore/)
