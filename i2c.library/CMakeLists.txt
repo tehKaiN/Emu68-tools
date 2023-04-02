@@ -12,7 +12,6 @@ target_include_directories(i2c INTERFACE include)
 add_executable(i2c.library
     src/main.c
     src/gpio.c
-    src/end.c
 
     src/lib_functions/alloc_i2c.c
     src/lib_functions/bring_back_i2c.c
@@ -24,7 +23,10 @@ add_executable(i2c.library
     src/lib_functions/send_i2c.c
     src/lib_functions/set_i2c_delay.c
     src/lib_functions/shutdown_i2c.c
+
+    src/end.c
 )
+
 target_include_directories(i2c.library PRIVATE src)
 target_link_libraries(i2c.library i2c devicetree amiga common)
 target_compile_definitions(i2c.library PUBLIC
