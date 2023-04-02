@@ -17,5 +17,3 @@ uint32_t set_extgpio_state(uint32_t id, uint32_t state, struct SDCardBase * SDCa
 uint32_t set_sdhost_clock(uint32_t speed, struct SDCardBase * SDCardBase);
 
 #endif /* _MBOX_H */
-
-static uint32_t mbox_recv(uint32_t channel, uint32_t * mailbox_base);
