@@ -14,7 +14,7 @@ extern "C" {
 
 static struct I2C_Base *I2C_Base = 0;
 
-tI2c::tI2c([[gnu::unused]] const std::string &Port)
+tI2c::tI2c()
 {
     I2C_Base = (struct I2C_Base *)OpenLibrary("i2c.library", 40);
     if (I2C_Base == NULL) {

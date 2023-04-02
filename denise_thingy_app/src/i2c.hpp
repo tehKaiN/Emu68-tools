@@ -10,7 +10,7 @@
 
 class tI2c {
 public:
-	tI2c(const std::string &Port);
+	tI2c();
 	~tI2c();
 
 	bool write(uint8_t ubAddr, const std::vector<uint8_t> &vData);

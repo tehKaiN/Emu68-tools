@@ -53,19 +53,27 @@ int main(int lArgCount, const char *pArgs[])
 	using namespace std::chrono_literals;
 	using namespace deniseThingy;
 
-	if(lArgCount < 4) {
-		printf("Usage:\n\t%s i2cPort i2cSlaveAddrHex /path/to/cfg.bit\n", pArgs[0]);
-		printf("e.g.:\n\t%s /dev/i2c-1 5a file.bit\n", pArgs[0]);
+	if(lArgCount < 3) {
+		printf("Usage:\n\t%s i2cSlaveAddrHex /path/to/cfg.bit [-id]\n", pArgs[0]);
+		printf("\t-id\tIgnore DeviceId check\n");
+		printf("e.g.:\n\t%s 80 file.bit\n", pArgs[0]);
 		return EXIT_FAILURE;
+	}
+
+	bool isIgnoreDevId = false;
+	for(uint8_t i = 3; i < lArgCount; ++i) {
+		if(pArgs[i] == std::string("-id")) {
+			isIgnoreDevId = true;
+		}
 	}
 
 	std::experimental::optional<tBitstream> Bitstream;
 	try {
-		Bitstream = tBitstream(pArgs[3]);
+		Bitstream = tBitstream(pArgs[2]);
 	}
 	catch(const std::exception &Exc) {
 		printf(
-			"ERR: bitstream '%s' read fail: '%s'\n", pArgs[3], Exc.what()
+			"ERR: bitstream '%s' read fail: '%s'\n", pArgs[2], Exc.what()
 		);
 		return EXIT_FAILURE;
 	}
@@ -77,16 +85,16 @@ int main(int lArgCount, const char *pArgs[])
 	}
 
 	// Read the I2C address of the FPGA
-	auto FpgaAddr = std::stoi(pArgs[2], 0, 16);
+	auto FpgaAddr = std::stoi(pArgs[1], 0, 16);
 
 	// Initialize I2C port
 	std::experimental::optional<tI2c> I2c;
 	try {
-		I2c = tI2c(pArgs[1]);
+		I2c = tI2c();
 	}
 	catch(const std::exception &Exc) {
 		printf(
-			"ERR: i2c port '%s' init fail: '%s'\n", pArgs[1], Exc.what()
+			"ERR: i2c port init fail: '%s'\n", Exc.what()
 		);
 		return EXIT_FAILURE;
 	}
@@ -114,7 +122,7 @@ int main(int lArgCount, const char *pArgs[])
 	time::sleepFor(10ms);
 
 	// 1. Read ID (E0)
-	printf("Checking device id...\n");
+	printf("Checking DeviceId...\n");
 	I2c->write(FpgaAddr, {0xE0, 0x00, 0x00, 0x00});
 	std::array<uint8_t, 4> DevId {0};
 	bool isRead = I2c->read(FpgaAddr, DevId);
@@ -124,13 +132,18 @@ int main(int lArgCount, const char *pArgs[])
 	}
 	if(DevId != Bitstream->m_DeviceId) {
 		printf(
-			"ERR: DevId mismatch! Dev: %02X %02X %02X %02X, "
+			"ERR: DeviceId mismatch! Dev: %02X %02X %02X %02X, "
 			".bit: %02X, %02X, %02X, %02X\n",
 			DevId[0], DevId[1], DevId[2], DevId[3],
 			Bitstream->m_DeviceId[0], Bitstream->m_DeviceId[1],
 			Bitstream->m_DeviceId[2], Bitstream->m_DeviceId[3]
 		);
-		return EXIT_FAILURE;
+		if(isIgnoreDevId) {
+			printf("Continuing due to -id flag set...\n");
+		}
+		else {
+			return EXIT_FAILURE;
+		}
 	}
 
 	// 2. Enable configuration interface (C6)
