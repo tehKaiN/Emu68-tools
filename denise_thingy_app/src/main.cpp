@@ -7,6 +7,7 @@
 #include <experimental/optional>
 #include <common/endian.hpp>
 #include <common/bcm_mbox.h>
+#include <common/bcm_mbox_buffer.hpp>
 #include <exec/types.h>
 #include <exec/memory.h>
 #include <proto/exec.h>
@@ -99,9 +100,7 @@ int main(int lArgCount, const char *pArgs[])
 		return EXIT_FAILURE;
 	}
 
-	uint8_t *pMboxBufferFull = (uint8_t*)AllocMem(512, MEMF_FAST | MEMF_CLEAR);
-	uint8_t *pMboxBufferAligned = (uint8_t*)(((ULONG)pMboxBufferFull + 31) & ~31);
-	uint32_t *pMboxBuffer = (uint32_t*)pMboxBufferAligned;
+	common::tMboxBufferScoped MboxBuffer(8);
 	uint32_t *pMboxBase = (uint32_t *)0xF200B880;
 
 	printf("Resetting FPGA...\n");
@@ -109,7 +108,7 @@ int main(int lArgCount, const char *pArgs[])
 	// CRESET:=0
 	set_extgpio_state(
 		tExtGpio::CAM_GPIO, 0,
-		pMboxBuffer, pMboxBase, SysBase
+		MboxBuffer.data(), pMboxBase, SysBase
 	);
 	time::sleepFor(1s);
 	I2c->write(FpgaAddr, {0xA4, 0xC6, 0xF4, 0x8A});
@@ -117,7 +116,7 @@ int main(int lArgCount, const char *pArgs[])
 	// CRESET:=1
 	set_extgpio_state(
 		tExtGpio::CAM_GPIO, 1,
-		pMboxBuffer, pMboxBase, SysBase
+		MboxBuffer.data(), pMboxBase, SysBase
 	);
 	time::sleepFor(10ms);
 
