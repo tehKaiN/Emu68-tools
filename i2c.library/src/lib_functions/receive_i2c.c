@@ -16,7 +16,7 @@
 ULONG ReceiveI2C(
 	REGARG(UBYTE ubAddress, "d0"),
 	REGARG(UWORD uwDataSize, "d1"),
-	REGARG(UBYTE pData[], "a0"),
+	REGARG(UBYTE pData[], "a1"),
 	REGARG(struct I2C_Base *i2cBase, "a6")
 )
 {

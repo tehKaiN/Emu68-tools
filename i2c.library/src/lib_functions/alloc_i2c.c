@@ -15,7 +15,7 @@
 
 BYTE AllocI2C(
 	__attribute__((unused)) REGARG(UBYTE Delay_Type, "d0"),
-	__attribute__((unused)) REGARG(char *Name, "a0"),
+	__attribute__((unused)) REGARG(char *Name, "a1"),
 	REGARG(struct I2C_Base *i2cBase, "a6")
 )
 {
