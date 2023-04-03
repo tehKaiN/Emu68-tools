@@ -33,7 +33,7 @@ ULONG SendI2C(
 
 	UWORD uwBytesCopied = 0;
 	while(!(rd32le(&pI2c->S) & I2C_S_DONE)) {
-		while(uwDataSize && (rd32le(&pI2c->S) & I2C_S_TXD)) {
+		while(uwDataSize && (rd32le(&pI2c->S) & I2C_S_TXW)) {
 			wr32le(&pI2c->FIFO, *(pData++));
 			uwBytesCopied++;
 			--uwDataSize;
