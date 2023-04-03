@@ -21,7 +21,7 @@
 // Deprecated, called internally as of original v40, shouldn't be called by end-user
 BYTE AllocI2C(
     REGARG(UBYTE Delay_Type, "d0"),
-    REGARG(char *Name, "a0"),
+    REGARG(char *Name, "a1"),
     REGARG(struct I2C_Base *i2cBase, "a6")
 );
 
@@ -36,14 +36,14 @@ void InitI2C(REGARG(struct I2C_Base *i2cBase, "a6"));
 ULONG SendI2C(
     REGARG(UBYTE addr, "d0"),
     REGARG(UWORD number, "d1"),
-    REGARG(UBYTE i2cdata[], "a0"),
+    REGARG(UBYTE i2cdata[], "a1"),
     REGARG(struct I2C_Base *i2cBase, "a6")
 );
 
 ULONG ReceiveI2C(
     REGARG(UBYTE addr, "d0"),
     REGARG(UWORD number, "d1"),
-    REGARG(UBYTE i2cdata[], "a0"),
+    REGARG(UBYTE i2cdata[], "a1"),
     REGARG(struct I2C_Base *i2cBase, "a6")
 );
 
