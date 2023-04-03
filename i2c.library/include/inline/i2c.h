@@ -21,7 +21,7 @@ typedef ULONG _sfdc_vararg;
 #endif /* !I2C_BASE_NAME */
 
 #define AllocI2C(___Delay_Type, ___Name) \
-      LP2(0x1e, BYTE, AllocI2C , UBYTE, ___Delay_Type, d0, char *, ___Name, a0,\
+      LP2(0x1e, BYTE, AllocI2C , UBYTE, ___Delay_Type, d0, char *, ___Name, a1,\
       , I2C_BASE_NAME)
 
 #define FreeI2C() \
@@ -37,11 +37,11 @@ typedef ULONG _sfdc_vararg;
       , I2C_BASE_NAME)
 
 #define SendI2C(___addr, ___number, ___i2cdata) \
-      LP3(0x36, ULONG, SendI2C , UBYTE, ___addr, d0, UWORD, ___number, d1, UBYTE *, ___i2cdata, a0,\
+      LP3(0x36, ULONG, SendI2C , UBYTE, ___addr, d0, UWORD, ___number, d1, UBYTE *, ___i2cdata, a1,\
       , I2C_BASE_NAME)
 
 #define ReceiveI2C(___addr, ___number, ___i2cdata) \
-      LP3(0x3c, ULONG, ReceiveI2C , UBYTE, ___addr, d0, UWORD, ___number, d1, UBYTE *, ___i2cdata, a0,\
+      LP3(0x3c, ULONG, ReceiveI2C , UBYTE, ___addr, d0, UWORD, ___number, d1, UBYTE *, ___i2cdata, a1,\
       , I2C_BASE_NAME)
 
 #define GetI2COpponent() \

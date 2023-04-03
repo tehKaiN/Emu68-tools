@@ -17,6 +17,7 @@ add_subdirectory(wifipi.device)
 add_subdirectory(emmc.device)
 add_subdirectory(i2c.library)
 add_subdirectory(lattice_i2c_prog)
+add_subdirectory(SetClockI2C)
 
 # Contribs
 add_subdirectory(Emu68Contribs/Emu68Info)
