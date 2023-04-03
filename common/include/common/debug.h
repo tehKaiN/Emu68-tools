@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#ifndef COMMON_ENDIAN_H
-#define COMMON_ENDIAN_H
+#ifndef COMMON_DEBUG_H
+#define COMMON_DEBUG_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -15,4 +15,4 @@ void bug(const char * restrict format, ...);
 }
 #endif
 
-#endif // COMMON_ENDIAN_H
+#endif // COMMON_DEBUG_H
