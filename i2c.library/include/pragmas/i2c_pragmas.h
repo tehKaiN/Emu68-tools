@@ -28,10 +28,10 @@
 #endif /* __MAXON__, __STORM__ or AZTEC_C */
 
 #ifdef __CLIB_PRAGMA_LIBCALL
- #pragma libcall I2C_Base AllocI2C 1e 8002
+ #pragma libcall I2C_Base AllocI2C 1e 9002
 #endif /* __CLIB_PRAGMA_LIBCALL */
 #ifdef __CLIB_PRAGMA_AMICALL
- #pragma amicall(I2C_Base, 0x1e, AllocI2C(d0,a0))
+ #pragma amicall(I2C_Base, 0x1e, AllocI2C(d0,a1))
 #endif /* __CLIB_PRAGMA_AMICALL */
 #ifdef __CLIB_PRAGMA_LIBCALL
  #pragma libcall I2C_Base FreeI2C 24 00
@@ -52,16 +52,16 @@
  #pragma amicall(I2C_Base, 0x30, InitI2C())
 #endif /* __CLIB_PRAGMA_AMICALL */
 #ifdef __CLIB_PRAGMA_LIBCALL
- #pragma libcall I2C_Base SendI2C 36 81003
+ #pragma libcall I2C_Base SendI2C 36 91003
 #endif /* __CLIB_PRAGMA_LIBCALL */
 #ifdef __CLIB_PRAGMA_AMICALL
- #pragma amicall(I2C_Base, 0x36, SendI2C(d0,d1,a0))
+ #pragma amicall(I2C_Base, 0x36, SendI2C(d0,d1,a1))
 #endif /* __CLIB_PRAGMA_AMICALL */
 #ifdef __CLIB_PRAGMA_LIBCALL
- #pragma libcall I2C_Base ReceiveI2C 3c 81003
+ #pragma libcall I2C_Base ReceiveI2C 3c 91003
 #endif /* __CLIB_PRAGMA_LIBCALL */
 #ifdef __CLIB_PRAGMA_AMICALL
- #pragma amicall(I2C_Base, 0x3c, ReceiveI2C(d0,d1,a0))
+ #pragma amicall(I2C_Base, 0x3c, ReceiveI2C(d0,d1,a1))
 #endif /* __CLIB_PRAGMA_AMICALL */
 #ifdef __CLIB_PRAGMA_LIBCALL
  #pragma libcall I2C_Base GetI2COpponent 42 00
