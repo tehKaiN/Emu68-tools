@@ -8,7 +8,7 @@
 #include <common/bcm_i2c.h>
 #include <i2c_private.h>
 
-#define RESULT(isError, ubIoError, ubAllocError) ((ubAllocError << 16) | (ubIoError << 8) | (isError))
+#define RESULT(isSuccess, ubIoError, ubAllocError) ((ubAllocError << 16) | (ubIoError << 8) | (isSuccess))
 
 ULONG ReceiveI2C(
 	REGARG(UBYTE ubAddress, "d0"),
@@ -22,7 +22,7 @@ ULONG ReceiveI2C(
 	ubAddress >>= 1;
 
 	volatile tI2cRegs * const pI2c = (volatile tI2cRegs *)i2cBase->I2cHwRegs;
-	UBYTE isError = I2C_OK, ubIoError = I2C_OK, ubAllocError = I2C_OK;
+	UBYTE isSuccess = 1, ubIoError = I2C_OK, ubAllocError = I2C_OK;
 
 	wr32le(&pI2c->A, ubAddress);
 	wr32le(&pI2c->C, I2C_C_CLEAR_FIFO_ONE_SHOT);
@@ -50,12 +50,12 @@ ULONG ReceiveI2C(
 	wr32le(&pI2c->S, I2C_S_DONE);
 
 	if((ulStatus & (I2C_S_ERR | I2C_S_CLKT)) || uwDataSize) {
-		isError = 1;
+		isSuccess = 0;
 		++i2cBase->Unheard;
 		ubIoError = I2C_NO_REPLY;
 	}
 
 	++i2cBase->RecvCalls;
 	i2cBase->RecvBytes += uwBytesRead;
-	return RESULT(isError, ubIoError, ubAllocError);
+	return RESULT(isSuccess, ubIoError, ubAllocError);
 }

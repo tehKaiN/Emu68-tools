@@ -30,11 +30,11 @@ tI2c::~tI2c()
 bool tI2c::write(uint8_t ubAddr, const std::vector<uint8_t> &vData)
 {
     auto Result = SendI2C(ubAddr, vData.size(), const_cast<UBYTE*>(vData.data()));
-    return Result == I2C_OK;
+    return (Result & 0xFF) != 0;
 }
 
 bool tI2c::read(uint8_t ubAddr, uint8_t *pDest, uint32_t ulReadSize)
 {
     auto Result = ReceiveI2C(ubAddr, ulReadSize, pDest);
-    return Result == I2C_OK;
+    return (Result & 0xFF) != 0;
 }
