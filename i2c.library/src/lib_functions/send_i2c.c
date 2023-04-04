@@ -28,10 +28,13 @@ ULONG SendI2C(
 	ubAddress >>= 1;
 
 	volatile tI2cRegs * const pI2c = (volatile tI2cRegs *)i2cBase->I2cHwRegs;
-	UBYTE isSuccess = 1, ubIoError = I2C_OK, ubAllocError = I2C_OK;
-
 	D(bug("  S: %08x\n", rd32le(&pI2c->S)));
 
+	if(rd32le(&pI2c->S) & I2C_S_TA) {
+		return RESULT(0, I2C_HARDW_BUSY, 0);
+	}
+
+	UBYTE isSuccess = 1, ubIoError = I2C_OK, ubAllocError = I2C_OK;
 	wr32le(&pI2c->A, ubAddress);
 	wr32le(&pI2c->C, I2C_C_CLEAR_FIFO_ONE_SHOT);
 	wr32le(&pI2c->S, I2C_S_CLKT | I2C_S_ERR | I2C_S_DONE);
